@@ -73,6 +73,7 @@ import MercadoPagoPage from '@/pages/admin/MercadoPagoPage.tsx';
 import LegalCenterPage from '@/pages/admin/LegalCenterPage.tsx';
 import PrivacyRequestsPage from '@/pages/admin/PrivacyRequestsPage.tsx';
 import LandingHeroPage from '@/pages/admin/LandingHeroPage.tsx';
+import SystemAppearancePage from '@/pages/admin/SystemAppearancePage.tsx';
 
 // Route Guards
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -242,6 +243,7 @@ function AppContent() {
             <Route path="/admin/legal" element={<LegalCenterPage />} />
             <Route path="/admin/privacy-requests" element={<PrivacyRequestsPage />} />
             <Route path="/admin/landing-hero" element={<LandingHeroPage />} />
+            <Route path="/admin/system-appearance" element={<SystemAppearancePage />} />
           </Route>
         </Route>
 

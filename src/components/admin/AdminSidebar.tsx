@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, Settings, LogOut, Menu, X, ShieldCheck, Gift, CreditCard, CircleHelp as HelpCircle, UsersRound, Wallet, ChevronDown, Scale, UserX, Smartphone } from 'lucide-react';
+import { NavLink, useLocation } from 'react-router-dom';
+import { LayoutDashboard, Users, Settings, LogOut, Menu, X, ShieldCheck, Gift, CreditCard, CircleHelp as HelpCircle, UsersRound, Wallet, Scale, UserX, Smartphone, Paintbrush } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,22 +11,67 @@ interface AdminSidebarProps {
   onMobileToggle?: () => void;
 }
 
+interface NavItem {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  roles: string[];
+}
+
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
 export default function AdminSidebar({ mobileOpen = false, onMobileToggle }: AdminSidebarProps) {
   const { signOut, user } = useAuth();
 
-  const navigation = [
-    { name: 'Dashboard', href: '/admin', icon: LayoutDashboard, roles: ['admin', 'parceiro'] },
-    { name: 'Usuários', href: '/admin/users', icon: Users, roles: ['admin', 'parceiro'] },
-    { name: 'Planos', href: '/admin/plans', icon: CreditCard, roles: ['admin'] },
-    { name: 'Mercado Pago', href: '/admin/mercadopago', icon: Wallet, roles: ['admin'] },
-    { name: 'Banner de Clientes', href: '/admin/banner-clients', icon: UsersRound, roles: ['admin'] },
-    { name: 'Indicações', href: '/admin/referrals', icon: Gift, roles: ['admin', 'parceiro'] },
-    { name: 'Hero Landing', href: '/admin/landing-hero', icon: Smartphone, roles: ['admin'] },
-    { name: 'Configurações', href: '/admin/settings', icon: Settings, roles: ['admin'] },
-    { name: 'Central de Ajuda', href: '/admin/help', icon: HelpCircle, roles: ['admin'] },
-    { name: 'Central Legal', href: '/admin/legal', icon: Scale, roles: ['admin'] },
-    { name: 'Privacidade / LGPD', href: '/admin/privacy-requests', icon: UserX, roles: ['admin'] },
-  ].filter(item => item.roles.includes(user?.role || ''));
+  const navigationGroups: NavGroup[] = [
+    {
+      label: 'Principal',
+      items: [
+        { name: 'Dashboard', href: '/admin', icon: LayoutDashboard, roles: ['admin', 'parceiro'] },
+        { name: 'Usuarios', href: '/admin/users', icon: Users, roles: ['admin', 'parceiro'] },
+      ],
+    },
+    {
+      label: 'Comercial',
+      items: [
+        { name: 'Planos', href: '/admin/plans', icon: CreditCard, roles: ['admin'] },
+        { name: 'Mercado Pago', href: '/admin/mercadopago', icon: Wallet, roles: ['admin'] },
+        { name: 'Indicacoes', href: '/admin/referrals', icon: Gift, roles: ['admin', 'parceiro'] },
+      ],
+    },
+    {
+      label: 'Aparencia e Conteudo',
+      items: [
+        { name: 'Aparencia do Sistema', href: '/admin/system-appearance', icon: Paintbrush, roles: ['admin'] },
+        { name: 'Banner de Clientes', href: '/admin/banner-clients', icon: UsersRound, roles: ['admin'] },
+        { name: 'Hero Landing', href: '/admin/landing-hero', icon: Smartphone, roles: ['admin'] },
+      ],
+    },
+    {
+      label: 'Sistema',
+      items: [
+        { name: 'Configuracoes', href: '/admin/settings', icon: Settings, roles: ['admin'] },
+        { name: 'Central de Ajuda', href: '/admin/help', icon: HelpCircle, roles: ['admin'] },
+      ],
+    },
+    {
+      label: 'Juridico e Privacidade',
+      items: [
+        { name: 'Central Legal', href: '/admin/legal', icon: Scale, roles: ['admin'] },
+        { name: 'Privacidade / LGPD', href: '/admin/privacy-requests', icon: UserX, roles: ['admin'] },
+      ],
+    },
+  ];
+
+  const filteredGroups = navigationGroups
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => item.roles.includes(user?.role || '')),
+    }))
+    .filter(group => group.items.length > 0);
 
   const sidebarContent = (isMobile: boolean) => (
     <>
@@ -56,16 +100,25 @@ export default function AdminSidebar({ mobileOpen = false, onMobileToggle }: Adm
 
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto px-3 py-2">
-        <nav className="space-y-0.5">
-          {navigation.map((item) => (
-            <AdminNavItem
-              key={item.name}
-              name={item.name}
-              href={item.href}
-              icon={item.icon}
-              end={item.href === '/admin'}
-              onClick={() => isMobile && onMobileToggle?.()}
-            />
+        <nav className="space-y-5">
+          {filteredGroups.map((group) => (
+            <div key={group.label}>
+              <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                {group.label}
+              </p>
+              <div className="space-y-0.5">
+                {group.items.map((item) => (
+                  <AdminNavItem
+                    key={item.name}
+                    name={item.name}
+                    href={item.href}
+                    icon={item.icon}
+                    end={item.href === '/admin'}
+                    onClick={() => isMobile && onMobileToggle?.()}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
       </div>

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
 import { useStorefrontAppearance } from '@/hooks/useStorefrontAppearance';
+import { useSystemAppearance } from '@/hooks/useSystemAppearance';
 import {
   StorefrontAppearance,
   DEFAULT_APPEARANCE,
@@ -32,47 +33,55 @@ interface StorefrontThemeProviderProps {
   children: ReactNode;
 }
 
+function buildSfStyles(app: StorefrontAppearance): React.CSSProperties {
+  return {
+    '--sf-bg': app.bg_color,
+    '--sf-text': app.text_color,
+    '--sf-heading': app.heading_color,
+    '--sf-button-bg': app.button_bg_color,
+    '--sf-button-text': app.button_text_color,
+    '--sf-accent': app.accent_color,
+    '--sf-card-bg': app.card_bg_color,
+    '--sf-card-border': app.card_border_color,
+    '--sf-badge-bg': app.badge_bg_color,
+    '--sf-badge-text': app.badge_text_color,
+    '--sf-icon': app.icon_color,
+    '--sf-muted': app.muted_text_color,
+    '--sf-border': app.border_color,
+    '--sf-radius-card': getRadiusPx(app.card_border_radius),
+    '--sf-radius-btn': getRadiusPx(app.button_border_radius),
+    '--sf-radius-img': getRadiusPx(app.image_border_radius),
+    '--sf-shadow': getShadowCss(app.card_shadow),
+    '--sf-gap': getSpacingValue(app.card_gap, 'gap'),
+    '--sf-spacing': getSpacingValue(app.section_spacing, 'section'),
+    '--sf-font': `'${app.font_family}', sans-serif`,
+    '--sf-font-heading': `'${app.heading_font_family}', sans-serif`,
+    '--sf-font-scale': getFontSizeScale(app.font_size_base),
+    backgroundColor: app.bg_color,
+    color: app.text_color,
+    fontFamily: `'${app.font_family}', sans-serif`,
+  } as React.CSSProperties;
+}
+
 export function StorefrontThemeProvider({ userId, isPaidPlan, children }: StorefrontThemeProviderProps) {
-  const { appearance, isCustomized } = useStorefrontAppearance(userId);
-  const isActive = isCustomized && isPaidPlan && appearance.is_active;
+  const { appearance: userAppearance, isCustomized } = useStorefrontAppearance(userId);
+  const { appearance: systemAppearance, loading: systemLoading } = useSystemAppearance();
+
+  const hasUserTheme = isCustomized && isPaidPlan && userAppearance.is_active;
+  const activeAppearance = hasUserTheme ? userAppearance : systemAppearance;
+  const isActive = hasUserTheme || (!systemLoading && systemAppearance.is_active);
 
   useEffect(() => {
     if (isActive) {
-      loadGoogleFont(appearance.font_family);
-      loadGoogleFont(appearance.heading_font_family);
+      loadGoogleFont(activeAppearance.font_family);
+      loadGoogleFont(activeAppearance.heading_font_family);
     }
-  }, [isActive, appearance.font_family, appearance.heading_font_family]);
+  }, [isActive, activeAppearance.font_family, activeAppearance.heading_font_family]);
 
   const sfStyles = useMemo<React.CSSProperties | undefined>(() => {
     if (!isActive) return undefined;
-    return {
-      '--sf-bg': appearance.bg_color,
-      '--sf-text': appearance.text_color,
-      '--sf-heading': appearance.heading_color,
-      '--sf-button-bg': appearance.button_bg_color,
-      '--sf-button-text': appearance.button_text_color,
-      '--sf-accent': appearance.accent_color,
-      '--sf-card-bg': appearance.card_bg_color,
-      '--sf-card-border': appearance.card_border_color,
-      '--sf-badge-bg': appearance.badge_bg_color,
-      '--sf-badge-text': appearance.badge_text_color,
-      '--sf-icon': appearance.icon_color,
-      '--sf-muted': appearance.muted_text_color,
-      '--sf-border': appearance.border_color,
-      '--sf-radius-card': getRadiusPx(appearance.card_border_radius),
-      '--sf-radius-btn': getRadiusPx(appearance.button_border_radius),
-      '--sf-radius-img': getRadiusPx(appearance.image_border_radius),
-      '--sf-shadow': getShadowCss(appearance.card_shadow),
-      '--sf-gap': getSpacingValue(appearance.card_gap, 'gap'),
-      '--sf-spacing': getSpacingValue(appearance.section_spacing, 'section'),
-      '--sf-font': `'${appearance.font_family}', sans-serif`,
-      '--sf-font-heading': `'${appearance.heading_font_family}', sans-serif`,
-      '--sf-font-scale': getFontSizeScale(appearance.font_size_base),
-      backgroundColor: appearance.bg_color,
-      color: appearance.text_color,
-      fontFamily: `'${appearance.font_family}', sans-serif`,
-    } as React.CSSProperties;
-  }, [isActive, appearance]);
+    return buildSfStyles(activeAppearance);
+  }, [isActive, activeAppearance]);
 
   useEffect(() => {
     if (isActive && sfStyles) {
@@ -87,10 +96,10 @@ export function StorefrontThemeProvider({ userId, isPaidPlan, children }: Storef
         }
       }
 
-      root.setAttribute('data-footer-logo-mode', appearance.footer_logo_mode);
-      root.setAttribute('data-footer-logo-format', appearance.footer_logo_format ?? 'rectangular');
-      if (appearance.custom_logo_url) {
-        root.setAttribute('data-custom-logo-url', appearance.custom_logo_url);
+      root.setAttribute('data-footer-logo-mode', activeAppearance.footer_logo_mode);
+      root.setAttribute('data-footer-logo-format', activeAppearance.footer_logo_format ?? 'rectangular');
+      if (activeAppearance.custom_logo_url) {
+        root.setAttribute('data-custom-logo-url', activeAppearance.custom_logo_url);
       } else {
         root.removeAttribute('data-custom-logo-url');
       }
@@ -103,9 +112,9 @@ export function StorefrontThemeProvider({ userId, isPaidPlan, children }: Storef
         root.removeAttribute('data-custom-logo-url');
       };
     }
-  }, [isActive, sfStyles, appearance.footer_logo_mode, appearance.footer_logo_format, appearance.custom_logo_url]);
+  }, [isActive, sfStyles, activeAppearance.footer_logo_mode, activeAppearance.footer_logo_format, activeAppearance.custom_logo_url]);
 
-  const value = useMemo(() => ({ appearance, isActive, sfStyles }), [appearance, isActive, sfStyles]);
+  const value = useMemo(() => ({ appearance: activeAppearance, isActive, sfStyles }), [activeAppearance, isActive, sfStyles]);
 
   return (
     <StorefrontThemeContext.Provider value={value}>
