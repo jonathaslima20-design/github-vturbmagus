@@ -27,6 +27,7 @@ import { ListingsHeaderSkeleton, ListingsFiltersSkeleton, ListingsStatusBarSkele
 import { LoadingProgressIndicator } from '@/components/listings/LoadingProgressIndicator';
 import { SectionErrorBoundary } from '@/components/listings/SectionErrorBoundary';
 import { exportProductsToCSV, downloadCSV } from '@/lib/csvUtils';
+import { useInventoryEnabled } from '@/hooks/useInventoryEnabled';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,6 +44,7 @@ export default function ListingsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, loading: authLoading } = useAuth();
+  const { inventoryEnabled } = useInventoryEnabled();
   const MAX_RETRIES = 3;
 
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -400,6 +402,7 @@ export default function ListingsPage() {
                 selectedProducts={selectedProducts}
                 updatingProductId={updatingProductId}
                 user={user}
+                inventoryEnabled={inventoryEnabled}
                 onSelectProduct={handleSelectProduct}
                 onToggleVisibility={toggleProductVisibility}
                 onDragEnd={handleDragEnd}
@@ -417,6 +420,7 @@ export default function ListingsPage() {
                 selectedProducts={selectedProducts}
                 updatingProductId={updatingProductId}
                 user={user}
+                inventoryEnabled={inventoryEnabled}
                 onSelectProduct={handleSelectProduct}
                 onToggleVisibility={toggleProductVisibility}
                 onQuickEdit={setQuickEditProduct}

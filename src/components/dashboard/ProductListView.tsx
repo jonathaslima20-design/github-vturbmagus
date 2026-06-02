@@ -20,6 +20,7 @@ interface ProductListViewProps {
   selectedProducts: Set<string>;
   updatingProductId: string | null;
   user: any;
+  inventoryEnabled?: boolean;
   onSelectProduct: (productId: string, checked: boolean) => void;
   onToggleVisibility: (productId: string, currentVisibility: boolean) => Promise<void>;
   onQuickEdit?: (product: Product) => void;
@@ -34,6 +35,7 @@ export function ProductListView({
   selectedProducts,
   updatingProductId,
   user,
+  inventoryEnabled = false,
   onSelectProduct,
   onToggleVisibility,
   onQuickEdit,
@@ -53,14 +55,14 @@ export function ProductListView({
   return (
     <div className="border rounded-xl overflow-hidden bg-card">
       {/* Table Header - hidden on mobile */}
-      <div className="hidden md:grid grid-cols-[40px_56px_1fr_120px_80px_80px_100px_80px_44px] gap-2 px-3 py-2.5 bg-muted/50 border-b text-xs font-medium text-muted-foreground items-center">
+      <div className={`hidden md:grid ${inventoryEnabled ? 'grid-cols-[40px_56px_1fr_120px_80px_80px_100px_80px_44px]' : 'grid-cols-[40px_56px_1fr_120px_80px_80px_80px_44px]'} gap-2 px-3 py-2.5 bg-muted/50 border-b text-xs font-medium text-muted-foreground items-center`}>
         <div />
         <div />
         <div>Produto</div>
         <div>Preço</div>
         <div className="text-center">Views</div>
         <div className="text-center">Leads</div>
-        <div className="text-center">Estoque</div>
+        {inventoryEnabled && <div className="text-center">Estoque</div>}
         <div className="text-center">Status</div>
         <div />
       </div>
@@ -78,7 +80,7 @@ export function ProductListView({
             <div
               key={product.id}
               className={`
-                grid grid-cols-[40px_56px_1fr_auto] md:grid-cols-[40px_56px_1fr_120px_80px_80px_100px_80px_44px]
+                grid grid-cols-[40px_56px_1fr_auto] ${inventoryEnabled ? 'md:grid-cols-[40px_56px_1fr_120px_80px_80px_100px_80px_44px]' : 'md:grid-cols-[40px_56px_1fr_120px_80px_80px_80px_44px]'}
                 gap-2 px-3 py-2.5 items-center hover:bg-muted/30 transition-colors
                 ${isSelected ? 'bg-primary/5' : ''}
               `}
@@ -163,20 +165,22 @@ export function ProductListView({
                 {analytics?.leads_count || 0}
               </div>
 
-              {/* Stock - desktop only */}
-              <div className="hidden md:flex items-center justify-center">
-                {product.track_inventory ? (
-                  <span className={`text-xs font-medium ${
-                    product.stock_quantity === 0 ? 'text-red-500' :
-                    (product.stock_quantity ?? 0) <= (product.low_stock_threshold ?? 5) ? 'text-amber-500' :
-                    'text-foreground'
-                  }`}>
-                    {product.stock_quantity ?? 0}
-                  </span>
-                ) : (
-                  <span className="text-xs text-muted-foreground">-</span>
-                )}
-              </div>
+              {/* Stock - desktop only, only when inventory is enabled */}
+              {inventoryEnabled && (
+                <div className="hidden md:flex items-center justify-center">
+                  {product.track_inventory ? (
+                    <span className={`text-xs font-medium ${
+                      product.stock_quantity === 0 ? 'text-red-500' :
+                      (product.stock_quantity ?? 0) <= (product.low_stock_threshold ?? 5) ? 'text-amber-500' :
+                      'text-foreground'
+                    }`}>
+                      {product.stock_quantity ?? 0}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">-</span>
+                  )}
+                </div>
+              )}
 
               {/* Visibility - desktop only */}
               <div className="hidden md:flex items-center justify-center">

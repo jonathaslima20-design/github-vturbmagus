@@ -29,6 +29,7 @@ interface ProductGridProps {
   selectedProducts: Set<string>;
   updatingProductId: string | null;
   user: any;
+  inventoryEnabled?: boolean;
   onSelectProduct: (productId: string, checked: boolean) => void;
   onToggleVisibility: (productId: string, currentVisibility: boolean) => Promise<void>;
   onDragEnd: (result: any) => Promise<void>;
@@ -73,6 +74,7 @@ const ProductCardComponent = memo(function ProductCardComponent({
   isSelected,
   updatingProductId,
   user,
+  inventoryEnabled,
   analytics,
   productTags,
   onSelectProduct,
@@ -86,6 +88,7 @@ const ProductCardComponent = memo(function ProductCardComponent({
   isSelected: boolean;
   updatingProductId: string | null;
   user: any;
+  inventoryEnabled: boolean;
   analytics: ProductAnalytics | null;
   productTags: ProductTag[];
   onSelectProduct: (productId: string, checked: boolean) => void;
@@ -121,7 +124,7 @@ const ProductCardComponent = memo(function ProductCardComponent({
     : null;
   const isTieredPricing = product.has_tiered_pricing && effectiveMinPrice !== null && effectiveMinPrice > 0;
 
-  const stockLevel = product.track_inventory
+  const stockLevel = inventoryEnabled && product.track_inventory
     ? product.stock_quantity === 0
       ? 'out'
       : product.stock_quantity !== null && product.stock_quantity <= (product.low_stock_threshold ?? 5)
@@ -245,7 +248,7 @@ const ProductCardComponent = memo(function ProductCardComponent({
             )}
 
             {/* Stock badge */}
-            {product.track_inventory && (
+            {inventoryEnabled && product.track_inventory && (
               <div className="absolute bottom-2 right-2">
                 <StockEditPopover
                   productId={product.id}
@@ -383,6 +386,7 @@ export function ProductGrid({
   selectedProducts,
   updatingProductId,
   user,
+  inventoryEnabled = false,
   onSelectProduct,
   onToggleVisibility,
   onDragEnd,
@@ -432,6 +436,7 @@ export function ProductGrid({
       isSelected={selectedProducts.has(product.id)}
       updatingProductId={updatingProductId}
       user={user}
+      inventoryEnabled={inventoryEnabled}
       analytics={getProductAnalytics ? getProductAnalytics(product.id) : null}
       productTags={getProductTags ? getProductTags(product.id) : []}
       onSelectProduct={onSelectProduct}
