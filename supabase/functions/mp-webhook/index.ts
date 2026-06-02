@@ -127,7 +127,8 @@ async function activatePlan(
     .from("subscriptions")
     .select("id")
     .eq("user_id", userId)
-    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (existingSub) {
@@ -179,7 +180,7 @@ Deno.serve(async (req: Request) => {
     const admin = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const eventType = body.type || body.action || "";
+    const action = body.action || body.type || "";
     const dataId = body.data?.id ? String(body.data.id) : "";
 
     if (!dataId) {
@@ -207,12 +208,11 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const eventId = `${eventType}_${dataId}_${Date.now()}`;
     const { error: idempotencyError } = await admin
       .from("payment_webhook_events")
       .insert({
-        mp_event_id: `${dataId}_${eventType}`,
-        event_type: eventType,
+        mp_event_id: `${dataId}_${action}`,
+        event_type: action,
         mp_payment_id: dataId,
         payload: body,
       });
@@ -330,7 +330,7 @@ Deno.serve(async (req: Request) => {
     await admin
       .from("payment_webhook_events")
       .update({ processed: true })
-      .eq("mp_event_id", `${dataId}_${eventType}`);
+      .eq("mp_event_id", `${dataId}_${action}`);
 
     return new Response(JSON.stringify({ received: true, status: mpStatus }), {
       status: 200,

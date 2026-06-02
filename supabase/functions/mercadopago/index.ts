@@ -125,7 +125,8 @@ async function activatePlan(
     .from("subscriptions")
     .select("id")
     .eq("user_id", userId)
-    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (existingSub) {
@@ -476,7 +477,7 @@ Deno.serve(async (req: Request) => {
 
         const { data: payment } = await admin
           .from("mp_payments")
-          .select("id, status, status_detail, pix_qr_code, pix_qr_code_base64, pix_expires_at, card_last4, card_brand, payment_method, updated_at")
+          .select("id, status, status_detail, mp_payment_id, plan_id, billing_cycle, early_renewal, pix_qr_code, pix_qr_code_base64, pix_expires_at, card_last4, card_brand, payment_method, updated_at")
           .eq("id", payment_id)
           .eq("user_id", user.id)
           .maybeSingle();
@@ -486,6 +487,56 @@ Deno.serve(async (req: Request) => {
             JSON.stringify({ error: "Pagamento não encontrado" }),
             { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
+        }
+
+        if (payment.status === "pending" && payment.mp_payment_id) {
+          try {
+            const config = await getConfig(admin);
+            const accessToken = getAccessToken(config);
+
+            const mpResponse = await fetch(
+              `https://api.mercadopago.com/v1/payments/${payment.mp_payment_id}`,
+              { headers: { Authorization: `Bearer ${accessToken}` } }
+            );
+
+            if (mpResponse.ok) {
+              const mpData = await mpResponse.json();
+              const mpStatus = mpData.status || "";
+
+              if (mpStatus !== payment.status) {
+                await admin
+                  .from("mp_payments")
+                  .update({
+                    status: mpStatus,
+                    status_detail: mpData.status_detail || "",
+                    raw_response: mpData,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq("id", payment.id);
+
+                if (mpStatus === "approved") {
+                  await activatePlan(
+                    admin,
+                    user.id,
+                    payment.plan_id,
+                    payment.billing_cycle,
+                    payment.early_renewal ?? false
+                  );
+                }
+
+                return new Response(
+                  JSON.stringify({
+                    ...payment,
+                    status: mpStatus,
+                    status_detail: mpData.status_detail || payment.status_detail,
+                  }),
+                  { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                );
+              }
+            }
+          } catch (e) {
+            console.error("Error checking MP API during polling:", e);
+          }
         }
 
         return new Response(
