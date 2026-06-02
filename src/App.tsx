@@ -6,6 +6,7 @@ import { CartProvider } from '@/contexts/CartContext';
 import { SubscriptionModalProvider } from '@/contexts/SubscriptionModalContext';
 import { CorretorPageStateProvider } from '@/contexts/CorretorPageStateContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
+import { PromotionalOffersProvider } from '@/contexts/PromotionalOffersContext';
 import { useCustomDomain } from '@/contexts/CustomDomainContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useEffect, useState, Suspense } from 'react';
@@ -16,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import SessionManager from '@/components/auth/SessionManager';
 import FloatingWhatsAppButton from '@/components/FloatingWhatsAppButton';
 import CookieConsentBanner from '@/components/CookieConsentBanner';
+import { OfferDisplayManager } from '@/components/offers/OfferDisplayManager';
 
 // Layouts
 import PublicLayout from '@/components/layouts/PublicLayout';
@@ -74,6 +76,9 @@ import LegalCenterPage from '@/pages/admin/LegalCenterPage.tsx';
 import PrivacyRequestsPage from '@/pages/admin/PrivacyRequestsPage.tsx';
 import LandingHeroPage from '@/pages/admin/LandingHeroPage.tsx';
 import SystemAppearancePage from '@/pages/admin/SystemAppearancePage.tsx';
+import OffersManagementPage from '@/pages/admin/OffersManagementPage.tsx';
+import OfferEditorPage from '@/pages/admin/OfferEditorPage.tsx';
+import OfferAnalyticsPage from '@/pages/admin/OfferAnalyticsPage.tsx';
 
 // Route Guards
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -244,6 +249,10 @@ function AppContent() {
             <Route path="/admin/privacy-requests" element={<PrivacyRequestsPage />} />
             <Route path="/admin/landing-hero" element={<LandingHeroPage />} />
             <Route path="/admin/system-appearance" element={<SystemAppearancePage />} />
+            <Route path="/admin/offers" element={<OffersManagementPage />} />
+            <Route path="/admin/offers/new" element={<OfferEditorPage />} />
+            <Route path="/admin/offers/:offerId" element={<OfferEditorPage />} />
+            <Route path="/admin/offers/:offerId/analytics" element={<OfferAnalyticsPage />} />
           </Route>
         </Route>
 
@@ -264,14 +273,17 @@ export default function App() {
         <AuthProvider>
           <NotificationProvider>
             <SubscriptionModalProvider>
-              <CartProvider>
-                <CorretorPageStateProvider>
-                  <AppContent />
-                  <Toaster />
-                  <FloatingWhatsAppButton />
-                  <CookieConsentBanner />
-                </CorretorPageStateProvider>
-              </CartProvider>
+              <PromotionalOffersProvider>
+                <CartProvider>
+                  <CorretorPageStateProvider>
+                    <AppContent />
+                    <OfferDisplayManager />
+                    <Toaster />
+                    <FloatingWhatsAppButton />
+                    <CookieConsentBanner />
+                  </CorretorPageStateProvider>
+                </CartProvider>
+              </PromotionalOffersProvider>
             </SubscriptionModalProvider>
           </NotificationProvider>
         </AuthProvider>

@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, Settings, LogOut, Menu, X, ShieldCheck, Gift, CreditCard, CircleHelp as HelpCircle, UsersRound, Wallet, Scale, UserX, Smartphone, Paintbrush } from 'lucide-react';
+import { LayoutDashboard, Users, Settings, LogOut, Menu, X, ShieldCheck, Gift, CreditCard, CircleHelp as HelpCircle, UsersRound, Wallet, Scale, UserX, Smartphone, Paintbrush, Megaphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/contexts/AuthContext';
@@ -38,6 +38,7 @@ export default function AdminSidebar({ mobileOpen = false, onMobileToggle }: Adm
       label: 'Comercial',
       items: [
         { name: 'Planos', href: '/admin/plans', icon: CreditCard, roles: ['admin'] },
+        { name: 'Ofertas Promocionais', href: '/admin/offers', icon: Megaphone, roles: ['admin'] },
         { name: 'Mercado Pago', href: '/admin/mercadopago', icon: Wallet, roles: ['admin'] },
         { name: 'Indicacoes', href: '/admin/referrals', icon: Gift, roles: ['admin', 'parceiro'] },
       ],

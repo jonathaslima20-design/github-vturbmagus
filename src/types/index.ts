@@ -502,6 +502,7 @@ export type NotificationType =
   | 'out_of_stock'
   | 'referral_signup'
   | 'referral_upgrade'
+  | 'promotional_offer'
   | 'system';
 
 export interface AppNotification {
