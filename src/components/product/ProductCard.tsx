@@ -18,6 +18,7 @@ interface ProductCardProps {
   corretorSlug: string;
   currency?: SupportedCurrency;
   language?: SupportedLanguage;
+  inventoryEnabled?: boolean;
   showStockOnStorefront?: boolean;
   onNavigate?: () => void;
 }
@@ -27,6 +28,7 @@ function ProductCardComponent({
   corretorSlug,
   currency = 'BRL',
   language = 'pt-BR',
+  inventoryEnabled = false,
   showStockOnStorefront = false,
   onNavigate
 }: ProductCardProps) {
@@ -91,7 +93,7 @@ function ProductCardComponent({
   const weightVariantMinPrice = hasWeightVariants ? Number(product.min_variant_price) : null;
 
   const isAvailable = product.status === 'disponivel';
-  const stockStatus = getStockStatus(product);
+  const stockStatus = inventoryEnabled ? getStockStatus(product) : 'untracked';
   const isOutOfStock = stockStatus === 'out_of_stock';
   const hasPrice = (displayPrice && displayPrice > 0) || (product.has_tiered_pricing && minimumTieredPrice && minimumTieredPrice > 0) || hasWeightVariants;
   
@@ -388,6 +390,7 @@ const arePropsEqual = (prevProps: ProductCardProps, nextProps: ProductCardProps)
     prevProps.product.track_inventory === nextProps.product.track_inventory &&
     prevProps.product.stock_quantity === nextProps.product.stock_quantity &&
     prevProps.product.low_stock_threshold === nextProps.product.low_stock_threshold &&
+    prevProps.inventoryEnabled === nextProps.inventoryEnabled &&
     prevProps.showStockOnStorefront === nextProps.showStockOnStorefront &&
     prevProps.currency === nextProps.currency &&
     prevProps.language === nextProps.language &&

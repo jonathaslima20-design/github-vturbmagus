@@ -24,6 +24,7 @@ import { useTranslation, type SupportedLanguage, type SupportedCurrency } from '
 import { updateMetaTags, getCorretorMetaTags } from '@/utils/metaTags';
 import { scrollCoordinator } from '@/lib/scrollCoordinator';
 import { StorefrontThemeProvider } from '@/contexts/StorefrontThemeContext';
+import { useInventoryEnabledForStore } from '@/hooks/useInventoryEnabled';
 
 const PromotionalBanner = lazy(() => import('@/components/corretor/PromotionalBanner'));
 
@@ -67,6 +68,7 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
   const { corretor, loading: corretorLoading, error: corretorError } = useCorretorData({ slug });
 
   const isPaidPlan = corretor?.plan_status === 'active';
+  const { inventoryEnabled, showStockOnStorefront } = useInventoryEnabledForStore(corretor?.id);
 
   const language: SupportedLanguage = corretor?.language || 'pt-BR';
   const currency: SupportedCurrency = corretor?.currency || 'BRL';
@@ -556,6 +558,8 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
                           corretorSlug={corretor.slug || ''}
                           currency={currency}
                           language={language}
+                          inventoryEnabled={inventoryEnabled}
+                          showStockOnStorefront={showStockOnStorefront}
                           onNavigate={() => {
                             const currentScrollPosition = window.scrollY || document.documentElement.scrollTop;
                             pageStateHook.saveCurrentState(currentScrollPosition);

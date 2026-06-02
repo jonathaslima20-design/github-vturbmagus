@@ -135,13 +135,21 @@ export default function InventorySettingsContent() {
     handleSave(newState);
   };
 
-  const handleConfirmDisable = () => {
+  const handleConfirmDisable = async () => {
     setShowDisableDialog(false);
-    handleSave({
+    await handleSave({
       ...state,
       enableInventory: false,
       showStockOnStorefront: false,
     });
+
+    if (user?.id) {
+      await supabase
+        .from('products')
+        .update({ track_inventory: false, stock_quantity: null })
+        .eq('user_id', user.id)
+        .eq('track_inventory', true);
+    }
   };
 
   const handleReservationChange = (value: string) => {
