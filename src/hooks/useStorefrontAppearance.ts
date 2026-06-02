@@ -11,15 +11,33 @@ interface UseStorefrontAppearanceResult {
   refresh: () => void;
 }
 
-export function useStorefrontAppearance(userId: string | undefined): UseStorefrontAppearanceResult {
-  const [appearance, setAppearance] = useState<StorefrontAppearance>(DEFAULT_APPEARANCE);
-  const [loading, setLoading] = useState(true);
-  const [isCustomized, setIsCustomized] = useState(false);
+export function useStorefrontAppearance(
+  userId: string | undefined,
+  initialAppearance?: StorefrontAppearance | null
+): UseStorefrontAppearanceResult {
+  const hasInitial = !!initialAppearance;
+  const [appearance, setAppearance] = useState<StorefrontAppearance>(
+    initialAppearance || DEFAULT_APPEARANCE
+  );
+  const [loading, setLoading] = useState(!hasInitial);
+  const [isCustomized, setIsCustomized] = useState(hasInitial);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    if (initialAppearance) {
+      setAppearance(initialAppearance);
+      setIsCustomized(true);
+      setLoading(false);
+    }
+  }, [initialAppearance]);
 
   useEffect(() => {
     if (!userId) {
       setLoading(false);
+      return;
+    }
+
+    if (hasInitial && refreshKey === 0) {
       return;
     }
 
@@ -33,8 +51,10 @@ export function useStorefrontAppearance(userId: string | undefined): UseStorefro
 
       if (error) {
         console.error('Error fetching appearance:', error);
-        setAppearance(DEFAULT_APPEARANCE);
-        setIsCustomized(false);
+        if (!hasInitial) {
+          setAppearance(DEFAULT_APPEARANCE);
+          setIsCustomized(false);
+        }
       } else if (data) {
         setAppearance(data as StorefrontAppearance);
         setIsCustomized(true);

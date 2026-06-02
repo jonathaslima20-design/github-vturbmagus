@@ -4,7 +4,35 @@ import { loadTrackingSettings, injectMetaPixel, injectGoogleAnalytics } from '@/
 import { logCategoryOperation, sanitizeCategoryName } from '@/lib/categoryUtils';
 import { updateMetaTags, updateFavicon, getCorretorMetaTags, resetMetaTags } from '@/utils/metaTags';
 import { validateSession } from '@/lib/auth/simpleAuth';
+import { loadGoogleFont, type StorefrontAppearance } from '@/lib/appearanceDefaults';
 import type { User } from '@/types';
+
+const APPEARANCE_CACHE_PREFIX = 'sf-theme-';
+const APPEARANCE_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+function getCachedAppearance(userId: string): StorefrontAppearance | null {
+  try {
+    const raw = localStorage.getItem(`${APPEARANCE_CACHE_PREFIX}${userId}`);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > APPEARANCE_CACHE_TTL) {
+      localStorage.removeItem(`${APPEARANCE_CACHE_PREFIX}${userId}`);
+      return null;
+    }
+    return data as StorefrontAppearance;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedAppearance(userId: string, data: StorefrontAppearance): void {
+  try {
+    localStorage.setItem(
+      `${APPEARANCE_CACHE_PREFIX}${userId}`,
+      JSON.stringify({ data, ts: Date.now() })
+    );
+  } catch {}
+}
 
 interface UseCorretorDataProps {
   slug: string | undefined;
@@ -14,6 +42,7 @@ interface UseCorretorDataReturn {
   corretor: User | null;
   loading: boolean;
   error: string | null;
+  preloadedAppearance: StorefrontAppearance | null;
 }
 
 /**
@@ -23,6 +52,7 @@ export function useCorretorData({ slug }: UseCorretorDataProps): UseCorretorData
   const [corretor, setCorretor] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [preloadedAppearance, setPreloadedAppearance] = useState<StorefrontAppearance | null>(null);
 
   useEffect(() => {
     // Validate session on component mount
@@ -111,7 +141,30 @@ export function useCorretorData({ slug }: UseCorretorDataProps): UseCorretorData
       });
       
       setCorretor(corretorData);
-      
+
+      // Pre-fetch storefront appearance: try cache first, then fetch in background
+      const cachedAppearance = getCachedAppearance(corretorData.id);
+      if (cachedAppearance) {
+        setPreloadedAppearance(cachedAppearance);
+        loadGoogleFont(cachedAppearance.font_family);
+        loadGoogleFont(cachedAppearance.heading_font_family);
+      }
+
+      supabase
+        .from('storefront_appearance')
+        .select('*')
+        .eq('user_id', corretorData.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            const appearance = data as StorefrontAppearance;
+            setPreloadedAppearance(appearance);
+            setCachedAppearance(corretorData.id, appearance);
+            loadGoogleFont(appearance.font_family);
+            loadGoogleFont(appearance.heading_font_family);
+          }
+        });
+
       // Define current language with fallback
       const currentLanguage = corretorData.language || 'pt-BR';
       
@@ -176,6 +229,7 @@ export function useCorretorData({ slug }: UseCorretorDataProps): UseCorretorData
   return {
     corretor,
     loading,
-    error
+    error,
+    preloadedAppearance
   };
 }

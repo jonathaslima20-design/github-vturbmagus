@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useStorefrontAppearance } from '@/hooks/useStorefrontAppearance';
 import { useSystemAppearance } from '@/hooks/useSystemAppearance';
 import {
@@ -30,6 +30,7 @@ export function useStorefrontTheme() {
 interface StorefrontThemeProviderProps {
   userId: string | undefined;
   isPaidPlan: boolean;
+  preloadedAppearance?: StorefrontAppearance | null;
   children: ReactNode;
 }
 
@@ -63,13 +64,26 @@ function buildSfStyles(app: StorefrontAppearance): React.CSSProperties {
   } as React.CSSProperties;
 }
 
-export function StorefrontThemeProvider({ userId, isPaidPlan, children }: StorefrontThemeProviderProps) {
-  const { appearance: userAppearance, isCustomized } = useStorefrontAppearance(userId);
+export function StorefrontThemeProvider({ userId, isPaidPlan, preloadedAppearance, children }: StorefrontThemeProviderProps) {
+  const { appearance: userAppearance, isCustomized, loading: userLoading } = useStorefrontAppearance(
+    userId,
+    isPaidPlan ? preloadedAppearance : undefined
+  );
   const { appearance: systemAppearance, loading: systemLoading } = useSystemAppearance();
 
   const hasUserTheme = isCustomized && isPaidPlan && userAppearance.is_active;
   const activeAppearance = hasUserTheme ? userAppearance : systemAppearance;
   const isActive = hasUserTheme || (!systemLoading && systemAppearance.is_active);
+
+  const hasPreloaded = !!preloadedAppearance && isPaidPlan && preloadedAppearance.is_active;
+  const themeReady = hasPreloaded || (!userLoading && !systemLoading);
+  const [revealed, setRevealed] = useState(hasPreloaded);
+
+  useEffect(() => {
+    if (themeReady) {
+      requestAnimationFrame(() => setRevealed(true));
+    }
+  }, [themeReady]);
 
   useEffect(() => {
     if (isActive) {
@@ -118,7 +132,14 @@ export function StorefrontThemeProvider({ userId, isPaidPlan, children }: Storef
 
   return (
     <StorefrontThemeContext.Provider value={value}>
-      <div className={isActive ? 'sf-themed' : 'storefront-default'} style={sfStyles}>
+      <div
+        className={isActive ? 'sf-themed' : 'storefront-default'}
+        style={{
+          ...sfStyles,
+          opacity: revealed ? 1 : 0,
+          transition: 'opacity 150ms ease-in',
+        }}
+      >
         {children}
       </div>
     </StorefrontThemeContext.Provider>

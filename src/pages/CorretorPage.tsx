@@ -65,7 +65,7 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
   const pageSize = 100;
 
   // Load corretor data
-  const { corretor, loading: corretorLoading, error: corretorError } = useCorretorData({ slug });
+  const { corretor, loading: corretorLoading, error: corretorError, preloadedAppearance } = useCorretorData({ slug });
 
   const isPaidPlan = corretor?.plan_status === 'active';
   const { inventoryEnabled, showStockOnStorefront } = useInventoryEnabledForStore(corretor?.id);
@@ -459,7 +459,7 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
   });
 
   return (
-    <StorefrontThemeProvider userId={corretor.id} isPaidPlan={isPaidPlan}>
+    <StorefrontThemeProvider userId={corretor.id} isPaidPlan={isPaidPlan} preloadedAppearance={preloadedAppearance}>
       <div className="flex-1">
       <CorretorHeader
         corretor={corretor}
