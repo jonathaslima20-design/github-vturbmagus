@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent } from '@/components/ui/card';
 import { getInitials, formatWhatsAppForDisplay, generateWhatsAppUrl } from '@/lib/utils';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import PlanTypeBadge from '@/components/subscription/PlanTypeBadge';
 import type { User } from '@/types';
@@ -145,6 +145,7 @@ export function UserTable({
                 <TableHead className="w-12 text-center">WhatsApp</TableHead>
                 <TableHead className="w-20">Status</TableHead>
                 <TableHead className="w-24">Cadastro</TableHead>
+                <TableHead className="w-28">Último Acesso</TableHead>
                 <TableHead className="w-20 text-right">Acoes</TableHead>
               </TableRow>
             </TableHeader>
@@ -244,6 +245,28 @@ export function UserTable({
                       <div className="text-xs">
                         {format(new Date(user.created_at), 'dd/MM/yy', { locale: ptBR })}
                       </div>
+                    </TableCell>
+                    <TableCell className="w-28">
+                      {(user as any).last_login_at ? (
+                        <div className="flex items-center gap-1.5">
+                          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                            (() => {
+                              const hours = (Date.now() - new Date((user as any).last_login_at).getTime()) / 3600000;
+                              if (hours < 24) return 'bg-green-500';
+                              if (hours < 168) return 'bg-yellow-500';
+                              return 'bg-red-500';
+                            })()
+                          }`} />
+                          <span className="text-xs truncate">
+                            {formatDistanceToNow(new Date((user as any).last_login_at), { locale: ptBR, addSuffix: false })}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-1.5 h-1.5 rounded-full bg-gray-300 shrink-0" />
+                          <span className="text-xs text-muted-foreground">Nunca</span>
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="w-20">
                       <div className="flex justify-end gap-1">

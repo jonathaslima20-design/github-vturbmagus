@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { supabase } from '@/lib/supabase';
+import { logActivity } from '@/lib/activityLogger';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -441,6 +442,7 @@ export default function EditProductPage() {
         if (insertVariantsError) throw insertVariantsError;
       }
 
+      logActivity('product.update', `Editou o produto "${data.title}"`, 'product', id);
       toast.success('Produto atualizado com sucesso!');
       navigate('/dashboard/listings');
     } catch (error) {

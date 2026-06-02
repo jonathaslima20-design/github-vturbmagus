@@ -17,6 +17,7 @@ import { deductStockForOrder, restoreStockForOrder } from '@/lib/stockUtils';
 import { useInventoryEnabled } from '@/hooks/useInventoryEnabled';
 import { generateWhatsAppUrl } from '@/lib/utils';
 import { toast } from 'sonner';
+import { logActivity } from '@/lib/activityLogger';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { Order, OrderStatus } from '@/types';
@@ -75,6 +76,11 @@ export default function OrderDetailsPanel({
     setUpdating(true);
     const success = await updateOrderStatus(order.id, newStatus);
     if (success) {
+      const statusLabels: Record<string, string> = {
+        pending: 'pendente', confirmed: 'confirmado', preparing: 'em preparo',
+        shipped: 'enviado', delivered: 'entregue', cancelled: 'cancelado',
+      };
+      logActivity('order.status_change', `Atualizou pedido de ${order.customer_name} para "${statusLabels[newStatus] || newStatus}"`, 'order', order.id);
       onStatusUpdate(order.id, newStatus);
       toast.success(
         newStatus === 'cancelled'

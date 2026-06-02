@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Loader, Save } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { logActivity } from '@/lib/activityLogger';
 import { toast } from 'sonner';
 import type { Product } from '@/types';
 
@@ -68,6 +69,7 @@ export function QuickEditModal({ product, open, onOpenChange, onSaved }: QuickEd
 
       if (error) throw error;
 
+      logActivity('product.update', `Editou o produto "${product.title}"`, 'product', product.id);
       onSaved({ id: product.id, ...updates });
       toast.success('Produto atualizado');
       onOpenChange(false);

@@ -19,7 +19,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import type { DateFilterType, PlanTypeFilterType, ExpirationFilterType } from '@/pages/admin/UsersManagementPage';
+import type { DateFilterType, PlanTypeFilterType, ExpirationFilterType, ActivityFilterType } from '@/pages/admin/UsersManagementPage';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -38,6 +38,7 @@ interface UserListControlsProps {
   expirationFilter: ExpirationFilterType;
   customExpirationStartDate?: Date;
   customExpirationEndDate?: Date;
+  activityFilter: ActivityFilterType;
   totalUsers: number;
   filteredUsers: number;
   onSearchChange: (query: string) => void;
@@ -51,6 +52,7 @@ interface UserListControlsProps {
   onExpirationFilterChange: (filter: ExpirationFilterType) => void;
   onCustomExpirationStartDateChange: (date: Date | undefined) => void;
   onCustomExpirationEndDateChange: (date: Date | undefined) => void;
+  onActivityFilterChange: (filter: ActivityFilterType) => void;
   onRefresh: () => void;
 }
 
@@ -79,6 +81,8 @@ export function UserListControls({
   onExpirationFilterChange,
   onCustomExpirationStartDateChange,
   onCustomExpirationEndDateChange,
+  activityFilter,
+  onActivityFilterChange,
   onRefresh,
 }: UserListControlsProps) {
   const hasActiveFilters =
@@ -88,7 +92,8 @@ export function UserListControls({
     planFilter !== 'all' ||
     planTypeFilter !== 'all' ||
     dateFilter !== 'all' ||
-    expirationFilter !== 'all';
+    expirationFilter !== 'all' ||
+    activityFilter !== 'all';
 
   const handleClearFilters = () => {
     onSearchChange('');
@@ -102,6 +107,7 @@ export function UserListControls({
     onExpirationFilterChange('all');
     onCustomExpirationStartDateChange(undefined);
     onCustomExpirationEndDateChange(undefined);
+    onActivityFilterChange('all');
   };
 
   const getDateFilterLabel = () => {
@@ -409,6 +415,23 @@ export function UserListControls({
                     )}
                   </div>
                 )}
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    Atividade
+                  </Label>
+                  <Select value={activityFilter} onValueChange={(value) => onActivityFilterChange(value as ActivityFilterType)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Atividade" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="active-7d">Ativos (últimos 7 dias)</SelectItem>
+                      <SelectItem value="inactive-30d">Inativos (30+ dias)</SelectItem>
+                      <SelectItem value="never">Nunca acessaram</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 {hasActiveFilters && (
                   <Button

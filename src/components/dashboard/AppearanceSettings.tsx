@@ -12,6 +12,7 @@ import { useStorefrontAppearance } from '@/hooks/useStorefrontAppearance';
 import { useMockupData } from '@/hooks/useMockupData';
 import { PhoneMockup } from '@/components/dashboard/PhoneMockup';
 import { toast } from 'sonner';
+import { logActivity } from '@/lib/activityLogger';
 import { cn } from '@/lib/utils';
 import { deriveColorsFromBase } from '@/utils/colorUtils';
 import {
@@ -67,6 +68,7 @@ export function AppearanceSettings() {
     const { id, user_id, ...data } = localAppearance as StorefrontAppearance & { id?: string; user_id?: string };
     const success = await save(data);
     if (success) {
+      logActivity('appearance.update', 'Alterou a aparência da vitrine', 'appearance');
       toast.success('Aparência salva com sucesso!');
       setHasChanges(false);
     } else {

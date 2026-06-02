@@ -356,6 +356,30 @@ export async function authenticateUser(email: string, password: string): Promise
       }
     }
 
+    // Update last_login_at and login_count
+    supabase
+      .from('users')
+      .update({
+        last_login_at: new Date().toISOString(),
+        login_count: (enrichedProfile.login_count || 0) + 1,
+      })
+      .eq('id', enrichedProfile.id)
+      .then(() => {});
+
+    enrichedProfile.last_login_at = new Date().toISOString();
+    enrichedProfile.login_count = (enrichedProfile.login_count || 0) + 1;
+
+    // Log login activity
+    supabase
+      .from('user_activity_logs')
+      .insert({
+        user_id: enrichedProfile.id,
+        action: 'auth.login',
+        description: 'Fez login no sistema',
+        user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+      })
+      .then(() => {});
+
     // Store credentials for future auto-login (with normalized email)
     storeCredentials(normalizedEmail, password);
 
@@ -546,6 +570,18 @@ export async function autoLogin(): Promise<{
 export async function logoutUser(): Promise<void> {
   try {
     console.log('🚪 Logging out user');
+
+    const currentUser = getStoredUser();
+    if (currentUser?.id) {
+      supabase
+        .from('user_activity_logs')
+        .insert({
+          user_id: currentUser.id,
+          action: 'auth.logout',
+          description: 'Fez logout do sistema',
+        })
+        .then(() => {});
+    }
 
     // Clear all stored data
     clearAllStoredData();

@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { supabase } from '@/lib/supabase';
+import { logActivity } from '@/lib/activityLogger';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -337,6 +338,7 @@ export default function CreateProductPage() {
         if (tiersError) throw tiersError;
       }
 
+      logActivity('product.create', `Criou o produto "${data.title}"`, 'product', product.id);
       toast.success('Produto criado com sucesso!');
       navigate('/dashboard/listings');
     } catch (error) {

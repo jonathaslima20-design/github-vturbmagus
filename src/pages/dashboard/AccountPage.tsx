@@ -8,6 +8,7 @@ import { User, Mail, Building2, Phone, Calendar, CreditCard, Loader, Camera, Tri
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscriptionModal } from '@/contexts/SubscriptionModalContext';
 import { supabase } from '@/lib/supabase';
+import { logActivity } from '@/lib/activityLogger';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -89,6 +90,7 @@ export default function AccountPage() {
         return;
       }
 
+      logActivity('profile.update', 'Atualizou dados do perfil', 'profile');
       toast.success('Informações atualizadas com sucesso');
     } catch {
       toast.error('Erro ao atualizar informações');

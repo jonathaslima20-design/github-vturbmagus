@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/form';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/lib/supabase';
+import { logActivity } from '@/lib/activityLogger';
 import { useAuth } from '@/contexts/AuthContext';
 import { sanitizeCategoryName, isValidCategoryName, logCategoryOperation, normalizeCategoryNameForComparison } from '@/lib/categoryUtils';
 import { usePlanLimits } from '@/hooks/usePlanLimits';
@@ -117,6 +118,7 @@ export default function ProductCategoriesManager() {
 
       if (error) throw error;
 
+      logActivity('category.create', `Criou a categoria "${sanitizedName}"`, 'category');
       toast.success('Categoria criada com sucesso');
       form.reset();
       loadCategories();
@@ -146,6 +148,8 @@ export default function ProductCategoriesManager() {
 
       if (error) throw error;
 
+      const catName = categories.find(c => c.id === id)?.name || '';
+      logActivity('category.delete', `Excluiu a categoria "${catName}"`, 'category', id);
       toast.success('Categoria excluída com sucesso');
       loadCategories();
     } catch (error) {
@@ -194,6 +198,7 @@ export default function ProductCategoriesManager() {
 
       if (error) throw error;
 
+      logActivity('category.update', `Editou a categoria para "${sanitizedName}"`, 'category', id);
       toast.success('Categoria atualizada com sucesso');
       setEditingCategory(null);
       loadCategories();

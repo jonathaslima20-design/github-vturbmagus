@@ -55,6 +55,38 @@ export interface User {
   referral_code?: string;
   referred_by?: string;
   max_images_per_product?: number;
+  last_login_at?: string;
+  login_count?: number;
+}
+
+export type ActivityAction =
+  | 'auth.login'
+  | 'auth.logout'
+  | 'product.create'
+  | 'product.update'
+  | 'product.delete'
+  | 'product.status_change'
+  | 'category.create'
+  | 'category.update'
+  | 'category.delete'
+  | 'profile.update'
+  | 'profile.avatar'
+  | 'profile.slug'
+  | 'appearance.update'
+  | 'order.status_change'
+  | 'subscription.activated'
+  | 'subscription.expired';
+
+export interface ActivityLog {
+  id: string;
+  user_id: string;
+  action: ActivityAction;
+  entity_type?: string;
+  entity_id?: string;
+  description: string;
+  ip_address?: string;
+  user_agent?: string;
+  created_at: string;
 }
 
 export interface UserImageSettings {

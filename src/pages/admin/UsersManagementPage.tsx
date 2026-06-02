@@ -17,6 +17,7 @@ import type { User } from '@/types';
 export type DateFilterType = 'all' | 'today' | 'last7days' | 'last30days' | 'last3months' | 'custom';
 export type PlanTypeFilterType = 'all' | 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'no-plan';
 export type ExpirationFilterType = 'all' | 'expiring-today' | 'expiring-7days' | 'expiring-30days' | 'expired' | 'custom';
+export type ActivityFilterType = 'all' | 'active-7d' | 'inactive-30d' | 'never';
 
 const PAGE_SIZE = 50;
 
@@ -58,6 +59,7 @@ export default function UsersManagementPage() {
   const [expirationFilter, setExpirationFilter] = useState<ExpirationFilterType>(initialExpiration as ExpirationFilterType);
   const [customExpirationStartDate, setCustomExpirationStartDate] = useState<Date | undefined>(undefined);
   const [customExpirationEndDate, setCustomExpirationEndDate] = useState<Date | undefined>(undefined);
+  const [activityFilter, setActivityFilter] = useState<ActivityFilterType>('all');
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [cloneSourceUserId, setCloneSourceUserId] = useState<string>('');
   const [copyProductsDialogOpen, setCopyProductsDialogOpen] = useState(false);
@@ -90,6 +92,7 @@ export default function UsersManagementPage() {
   const handleExpirationFilterChange = useCallback((v: ExpirationFilterType) => { setExpirationFilter(v); resetPage(); }, [resetPage]);
   const handleCustomExpirationStartDateChange = useCallback((v: Date | undefined) => { setCustomExpirationStartDate(v); resetPage(); }, [resetPage]);
   const handleCustomExpirationEndDateChange = useCallback((v: Date | undefined) => { setCustomExpirationEndDate(v); resetPage(); }, [resetPage]);
+  const handleActivityFilterChange = useCallback((v: ActivityFilterType) => { setActivityFilter(v); resetPage(); }, [resetPage]);
 
   const handleSummaryCardClick = useCallback((filter: { plan?: string; status?: string; date?: string }) => {
     if (filter.plan) { setPlanFilter(filter.plan); } else { setPlanFilter('all'); }
@@ -188,6 +191,17 @@ export default function UsersManagementPage() {
         if (endDate) query = query.lt('created_at', endDate);
       }
 
+      if (activityFilter !== 'all') {
+        const now = new Date();
+        if (activityFilter === 'active-7d') {
+          query = query.gte('last_login_at', new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString());
+        } else if (activityFilter === 'inactive-30d') {
+          query = query.lt('last_login_at', new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString());
+        } else if (activityFilter === 'never') {
+          query = query.is('last_login_at', null);
+        }
+      }
+
       query = query.order('created_at', { ascending: false });
       const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
@@ -258,7 +272,7 @@ export default function UsersManagementPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, roleFilter, statusFilter, planFilter, planTypeFilter, dateFilter, customStartDate, customEndDate, expirationFilter, customExpirationStartDate, customExpirationEndDate, page]);
+  }, [debouncedSearch, roleFilter, statusFilter, planFilter, planTypeFilter, dateFilter, customStartDate, customEndDate, expirationFilter, customExpirationStartDate, customExpirationEndDate, activityFilter, page]);
 
   useEffect(() => {
     fetchUsers();
@@ -481,6 +495,8 @@ export default function UsersManagementPage() {
         onCustomExpirationStartDateChange={handleCustomExpirationStartDateChange}
         customExpirationEndDate={customExpirationEndDate}
         onCustomExpirationEndDateChange={handleCustomExpirationEndDateChange}
+        activityFilter={activityFilter}
+        onActivityFilterChange={handleActivityFilterChange}
         totalUsers={summaryCounts.total}
         filteredUsers={totalCount}
         onRefresh={handleRefresh}

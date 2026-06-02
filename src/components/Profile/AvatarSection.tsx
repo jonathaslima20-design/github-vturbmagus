@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Upload } from 'lucide-react';
+import { Loader as Loader2, Upload } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
+import { logActivity } from '@/lib/activityLogger';
 import { uploadImage } from '@/lib/image';
 import { ImageCropper } from '@/components/ui/image-cropper';
 
@@ -55,6 +56,7 @@ export function AvatarSection({ user, previewImage, setPreviewImage }: AvatarSec
       if (error) throw error;
 
       setPreviewImage(url);
+      logActivity('profile.avatar', 'Alterou a foto de perfil', 'profile');
       toast.success('Avatar atualizado com sucesso');
     } catch (error: any) {
       console.error('Error uploading avatar:', error);

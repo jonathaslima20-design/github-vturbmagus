@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { logActivity } from '@/lib/activityLogger';
 import { cleanWhatsAppNumber, formatWhatsAppForDisplay } from '@/lib/utils';
 import { getErrorMessage } from '@/lib/errorMessages';
 
@@ -260,6 +261,7 @@ export function ProfileSettings() {
       // Update user in context and local storage
       await updateUser(updateData);
 
+      logActivity('profile.update', 'Atualizou dados do perfil', 'profile');
       if (emailChanged) {
         toast.success('Perfil atualizado com sucesso! Um email de confirmação foi enviado para o novo endereço. Clique no link do email para confirmar a alteração. Até lá, continue usando o email atual para fazer login.');
       } else {

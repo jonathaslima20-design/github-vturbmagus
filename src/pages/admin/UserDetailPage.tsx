@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, ExternalLink, Ban, Phone, Calendar, Key, Lock, Trash2, Eye, DollarSign, Image as ImageIcon, Gift, Copy, Package, ShoppingCart, ChartBar as BarChart3, Users, TrendingUp, Globe, ChevronRight, ClipboardCopy, LogIn, Loader as Loader2 } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Ban, Phone, Calendar, Key, Lock, Trash2, Eye, DollarSign, Image as ImageIcon, Gift, Copy, Package, ShoppingCart, ChartBar as BarChart3, Users, TrendingUp, Globe, ChevronRight, ClipboardCopy, LogIn, Loader as Loader2, Activity, Monitor, FileCheck } from 'lucide-react';
 import { EditImageLimitDialog } from '@/components/admin/EditImageLimitDialog';
 import { CloneUserDialog } from '@/components/admin/CloneUserDialog';
 import { SimpleCopyProductsDialog } from '@/components/admin/SimpleCopyProductsDialog';
@@ -17,6 +17,7 @@ import { format, formatDistanceToNow, subDays, startOfDay, endOfDay } from 'date
 import { ptBR } from 'date-fns/locale';
 import { useUserSubscription } from '@/hooks/useUserSubscription';
 import SubscriptionManagement from '@/components/admin/SubscriptionManagement';
+import UserActivityLog from '@/components/admin/UserActivityLog';
 import OrderStatusBadge from '@/components/orders/OrderStatusBadge';
 import { fetchOrders, getOrderStats } from '@/lib/orderService';
 import type { Order } from '@/types';
@@ -58,6 +59,8 @@ export default function UserDetailPage() {
   const [showCopyDialog, setShowCopyDialog] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [impersonating, setImpersonating] = useState(false);
+  const [lastActivity, setLastActivity] = useState<{ description: string; created_at: string } | null>(null);
+  const [lastLoginDevice, setLastLoginDevice] = useState<string>('');
 
   const { subscription, recentPayments, loading: subscriptionLoading, refetch: refetchSubscription } = useUserSubscription(userId);
 
@@ -132,6 +135,41 @@ export default function UserDetailPage() {
         .eq('user_id', userId)
         .eq('status', 'disponivel');
       const totalValue = valueData?.reduce((sum, p) => sum + (p.discounted_price || p.price || 0), 0) || 0;
+
+      // Fetch last activity and last login device
+      const [lastActRes, lastLoginRes] = await Promise.all([
+        supabase
+          .from('user_activity_logs')
+          .select('description, created_at')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('user_activity_logs')
+          .select('user_agent')
+          .eq('user_id', userId)
+          .eq('action', 'auth.login')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+      if (lastActRes.data) setLastActivity(lastActRes.data);
+      if (lastLoginRes.data?.user_agent) {
+        const ua = lastLoginRes.data.user_agent;
+        let browser = 'Navegador';
+        if (ua.includes('Chrome') && !ua.includes('Edg')) browser = 'Chrome';
+        else if (ua.includes('Safari') && !ua.includes('Chrome')) browser = 'Safari';
+        else if (ua.includes('Firefox')) browser = 'Firefox';
+        else if (ua.includes('Edg')) browser = 'Edge';
+        let os = '';
+        if (ua.includes('Windows')) os = 'Windows';
+        else if (ua.includes('Mac')) os = 'Mac';
+        else if (ua.includes('Android')) os = 'Android';
+        else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+        else if (ua.includes('Linux')) os = 'Linux';
+        setLastLoginDevice(os ? `${browser}, ${os}` : browser);
+      }
 
       const conversionRate = totalViews > 0 ? (totalLeads / totalViews) * 100 : 0;
 
@@ -412,6 +450,83 @@ export default function UserDetailPage() {
 
               <Separator />
 
+              {/* Account Info */}
+              <div className="space-y-2.5">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Informações da Conta</p>
+                <div className="space-y-2">
+                  {/* Last Access */}
+                  <div className="flex items-center gap-2.5">
+                    <Activity className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-sm text-muted-foreground truncate">Último acesso:</span>
+                      {user.last_login_at ? (
+                        <div className="flex items-center gap-1.5">
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${
+                            (() => {
+                              const hours = (Date.now() - new Date(user.last_login_at).getTime()) / 3600000;
+                              if (hours < 24) return 'bg-green-500';
+                              if (hours < 168) return 'bg-yellow-500';
+                              return 'bg-red-500';
+                            })()
+                          }`} />
+                          <span className="text-sm font-medium truncate">
+                            {formatDistanceToNow(new Date(user.last_login_at), { locale: ptBR, addSuffix: true })}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-gray-400 shrink-0" />
+                          <span className="text-sm text-muted-foreground">Nunca</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Login Count */}
+                  <div className="flex items-center gap-2.5">
+                    <LogIn className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-sm text-muted-foreground">Total de logins:</span>
+                    <span className="text-sm font-medium">{user.login_count || 0}</span>
+                  </div>
+
+                  {/* Last Action */}
+                  {lastActivity && (
+                    <div className="flex items-start gap-2.5">
+                      <Eye className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <span className="text-sm text-muted-foreground block">Última ação:</span>
+                        <span className="text-xs text-foreground line-clamp-1">{lastActivity.description}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(lastActivity.created_at), { locale: ptBR, addSuffix: true })}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Last Device */}
+                  {lastLoginDevice && (
+                    <div className="flex items-center gap-2.5">
+                      <Monitor className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-sm text-muted-foreground">Dispositivo:</span>
+                      <span className="text-sm font-medium">{lastLoginDevice}</span>
+                    </div>
+                  )}
+
+                  {/* Terms Acceptance */}
+                  {user.accepted_terms_at && (
+                    <div className="flex items-center gap-2.5">
+                      <FileCheck className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-sm text-muted-foreground">Termos aceitos:</span>
+                      <span className="text-sm font-medium">
+                        {format(new Date(user.accepted_terms_at), 'dd/MM/yyyy', { locale: ptBR })}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <Separator />
+
               {/* Management Actions */}
               <div className="space-y-1.5">
                 <p className="text-xs font-medium text-muted-foreground mb-2">Gestão</p>
@@ -481,11 +596,12 @@ export default function UserDetailPage() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="w-full grid grid-cols-4 h-10">
+            <TabsList className="w-full grid grid-cols-5 h-10">
               <TabsTrigger value="visao-geral" className="text-xs sm:text-sm">Visão Geral</TabsTrigger>
               <TabsTrigger value="pedidos" className="text-xs sm:text-sm">Pedidos</TabsTrigger>
               <TabsTrigger value="assinatura" className="text-xs sm:text-sm">Assinatura</TabsTrigger>
               <TabsTrigger value="indicacoes" className="text-xs sm:text-sm">Indicações</TabsTrigger>
+              <TabsTrigger value="atividade" className="text-xs sm:text-sm">Atividade</TabsTrigger>
             </TabsList>
 
             <TabsContent value="visao-geral" className="mt-5 space-y-5">
@@ -510,6 +626,14 @@ export default function UserDetailPage() {
 
             <TabsContent value="indicacoes" className="mt-5">
               <ReferralsTab userId={userId!} referralCode={user?.referral_code} />
+            </TabsContent>
+
+            <TabsContent value="atividade" className="mt-5">
+              <Card>
+                <CardContent className="pt-6">
+                  <UserActivityLog userId={userId!} />
+                </CardContent>
+              </Card>
             </TabsContent>
           </Tabs>
         </div>

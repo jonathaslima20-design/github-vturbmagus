@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Plus, Loader } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { logActivity } from '@/lib/activityLogger';
 import { ListingsHeader, type ViewMode, type SortOption } from '@/components/dashboard/ListingsHeader';
 import { ListingsFilters } from '@/components/dashboard/ListingsFilters';
 import { ListingsStatusBar } from '@/components/dashboard/ListingsStatusBar';
@@ -244,6 +245,7 @@ export default function ListingsPage() {
         .eq('user_id', user.id);
 
       if (error) throw error;
+      logActivity('product.delete', `Excluiu o produto "${deleteProduct.title}"`, 'product', deleteProduct.id);
       toast.success('Produto excluído');
       refreshProducts();
     } catch (err) {
