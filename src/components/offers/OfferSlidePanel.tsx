@@ -1,5 +1,6 @@
 import { X, Percent, Tag } from 'lucide-react';
 import type { PromotionalOffer } from '../../types/offers';
+import { OfferCountdown } from './OfferCountdown';
 
 interface OfferSlidePanelProps {
   offer: PromotionalOffer;
@@ -69,6 +70,12 @@ export function OfferSlidePanel({ offer, onDismiss, onAccept, open }: OfferSlide
                 <p className="text-base opacity-80">{offer.subtitulo}</p>
               )}
             </div>
+
+            {offer.mostrar_contador && offer.data_fim && (
+              <div className="flex justify-center">
+                <OfferCountdown dataFim={offer.data_fim} corDestaque={offer.cor_destaque} />
+              </div>
+            )}
 
             {offer.descricao && (
               <p className="text-sm opacity-70 leading-relaxed">{offer.descricao}</p>

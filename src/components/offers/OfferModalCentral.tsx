@@ -1,6 +1,7 @@
 import { X, Percent, Tag } from 'lucide-react';
 import { Dialog, DialogContent } from '../ui/dialog';
 import type { PromotionalOffer } from '../../types/offers';
+import { OfferCountdown } from './OfferCountdown';
 
 interface OfferModalCentralProps {
   offer: PromotionalOffer;
@@ -52,6 +53,12 @@ export function OfferModalCentral({ offer, onDismiss, onAccept, open }: OfferMod
 
           {offer.subtitulo && (
             <p className="text-base opacity-80">{offer.subtitulo}</p>
+          )}
+
+          {offer.mostrar_contador && offer.data_fim && (
+            <div className="flex justify-center py-1">
+              <OfferCountdown dataFim={offer.data_fim} corDestaque={offer.cor_destaque} />
+            </div>
           )}
 
           {offer.descricao && (

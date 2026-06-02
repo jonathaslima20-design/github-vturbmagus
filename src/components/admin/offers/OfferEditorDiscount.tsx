@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
 import type { OfferFormData } from '@/types/offers';
@@ -131,6 +132,22 @@ export function OfferEditorDiscount({ form, updateForm }: Props) {
             onChange={(e) => updateForm({ data_fim: e.target.value || null })}
           />
         </div>
+      </div>
+
+      <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30">
+        <div className="space-y-0.5">
+          <Label className="text-sm font-medium">Contador Regressivo</Label>
+          <p className="text-xs text-muted-foreground">
+            {form.data_fim
+              ? 'Exibir contagem regressiva ate o fim da oferta'
+              : 'Defina uma data de fim para habilitar o contador'}
+          </p>
+        </div>
+        <Switch
+          checked={form.mostrar_contador}
+          onCheckedChange={(v) => updateForm({ mostrar_contador: v })}
+          disabled={!form.data_fim}
+        />
       </div>
     </div>
   );

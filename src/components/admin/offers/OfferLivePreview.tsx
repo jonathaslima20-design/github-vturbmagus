@@ -1,4 +1,4 @@
-import { Percent, Tag } from 'lucide-react';
+import { Percent, Tag, Clock } from 'lucide-react';
 import type { OfferFormData } from '@/types/offers';
 
 interface Props {
@@ -56,6 +56,7 @@ export function OfferLivePreview({ form }: Props) {
                     )}
                     <p className="font-bold text-xs leading-tight">{form.titulo || 'Titulo da oferta'}</p>
                     {form.subtitulo && <p className="text-[10px] opacity-70">{form.subtitulo}</p>}
+                    {form.mostrar_contador && form.data_fim && <CountdownPreview form={form} />}
                     <CTAButton form={form} />
                     <p className="text-center text-[8px] opacity-40">Agora nao, obrigado</p>
                   </div>
@@ -80,6 +81,7 @@ export function OfferLivePreview({ form }: Props) {
                     )}
                     <p className="font-bold text-xs leading-tight">{form.titulo || 'Titulo da oferta'}</p>
                     {form.subtitulo && <p className="text-[10px] opacity-70">{form.subtitulo}</p>}
+                    {form.mostrar_contador && form.data_fim && <CountdownPreview form={form} />}
                     <CTAButton form={form} />
                   </div>
                 </div>
@@ -163,6 +165,17 @@ function CTAButton({ form }: { form: OfferFormData }) {
       style={{ backgroundColor: form.botao_cor }}
     >
       {form.botao_texto || 'Aproveitar Oferta'}
+    </div>
+  );
+}
+
+function CountdownPreview({ form }: { form: OfferFormData }) {
+  return (
+    <div className="flex items-center justify-center gap-1">
+      <Clock className="w-2.5 h-2.5" style={{ color: form.cor_destaque }} />
+      <span className="text-[8px] font-semibold" style={{ color: form.cor_destaque }}>
+        Termina em 2d 14:30:00
+      </span>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { X, Percent, Tag } from 'lucide-react';
 import type { PromotionalOffer } from '../../types/offers';
+import { OfferCountdown } from './OfferCountdown';
 
 interface OfferFullscreenProps {
   offer: PromotionalOffer;
@@ -58,6 +59,12 @@ export function OfferFullscreen({ offer, onDismiss, onAccept }: OfferFullscreenP
 
           {offer.subtitulo && (
             <p className="text-lg opacity-80">{offer.subtitulo}</p>
+          )}
+
+          {offer.mostrar_contador && offer.data_fim && (
+            <div className="flex justify-center py-2">
+              <OfferCountdown dataFim={offer.data_fim} corDestaque={offer.cor_destaque} />
+            </div>
           )}
 
           {offer.descricao && (

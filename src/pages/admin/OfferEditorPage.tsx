@@ -9,9 +9,11 @@ import { OfferEditorDesign } from '@/components/admin/offers/OfferEditorDesign';
 import { OfferEditorDiscount } from '@/components/admin/offers/OfferEditorDiscount';
 import { OfferEditorTargeting } from '@/components/admin/offers/OfferEditorTargeting';
 import { OfferEditorDisplay } from '@/components/admin/offers/OfferEditorDisplay';
+import { OfferEditorAssignments } from '@/components/admin/offers/OfferEditorAssignments';
 import { OfferLivePreview } from '@/components/admin/offers/OfferLivePreview';
 import { OfferPreviewSimulator } from '@/components/admin/offers/OfferPreviewSimulator';
 import { createOffer, updateOffer, fetchOfferById, saveTargetingRules, saveDisplayConfig } from '@/lib/offerService';
+import { useAuth } from '@/contexts/AuthContext';
 import type { OfferFormData, OfferDisplayConfigFormData, OfferTargetingRule, OfferWithConfig } from '@/types/offers';
 
 const DEFAULT_FORM: OfferFormData = {
@@ -34,6 +36,7 @@ const DEFAULT_FORM: OfferFormData = {
   prioridade: 0,
   data_inicio: new Date().toISOString().split('T')[0],
   data_fim: null,
+  mostrar_contador: false,
   is_parceiro: false,
   parceiro_nome: null,
   parceiro_logo_url: null,
@@ -51,6 +54,7 @@ const DEFAULT_DISPLAY_CONFIG: OfferDisplayConfigFormData = {
 export default function OfferEditorPage() {
   const { offerId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const isEditing = !!offerId && offerId !== 'new';
 
   const [form, setForm] = useState<OfferFormData>(DEFAULT_FORM);
@@ -96,6 +100,7 @@ export default function OfferEditorPage() {
         prioridade: data.prioridade,
         data_inicio: data.data_inicio?.split('T')[0] || '',
         data_fim: data.data_fim?.split('T')[0] || null,
+        mostrar_contador: data.mostrar_contador ?? false,
         is_parceiro: data.is_parceiro,
         parceiro_nome: data.parceiro_nome,
         parceiro_logo_url: data.parceiro_logo_url,
@@ -220,16 +225,17 @@ export default function OfferEditorPage() {
         {/* Editor Panel */}
         <div className="xl:col-span-3">
           <Tabs defaultValue="conteudo" className="space-y-4">
-            <TabsList className="grid grid-cols-5 w-full">
+            <TabsList className={`grid w-full ${isEditing ? 'grid-cols-6' : 'grid-cols-5'}`}>
               <TabsTrigger value="conteudo">Conteudo</TabsTrigger>
               <TabsTrigger value="design">Design</TabsTrigger>
               <TabsTrigger value="desconto">Desconto</TabsTrigger>
               <TabsTrigger value="segmentacao">Segmentacao</TabsTrigger>
               <TabsTrigger value="exibicao">Exibicao</TabsTrigger>
+              {isEditing && <TabsTrigger value="destinatarios">Destinatarios</TabsTrigger>}
             </TabsList>
 
             <TabsContent value="conteudo">
-              <OfferEditorContent form={form} updateForm={updateForm} />
+              <OfferEditorContent form={form} updateForm={updateForm} offerId={isEditing ? offerId : undefined} />
             </TabsContent>
 
             <TabsContent value="design">
@@ -251,6 +257,12 @@ export default function OfferEditorPage() {
             <TabsContent value="exibicao">
               <OfferEditorDisplay config={displayConfig} setConfig={setDisplayConfig} />
             </TabsContent>
+
+            {isEditing && (
+              <TabsContent value="destinatarios">
+                <OfferEditorAssignments offerId={offerId!} adminUserId={user?.id || ''} />
+              </TabsContent>
+            )}
           </Tabs>
         </div>
 

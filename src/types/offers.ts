@@ -28,6 +28,7 @@ export interface PromotionalOffer {
   is_active: boolean;
   data_inicio: string;
   data_fim?: string | null;
+  mostrar_contador: boolean;
   parceiro_nome?: string | null;
   parceiro_logo_url?: string | null;
   is_parceiro: boolean;
@@ -108,6 +109,7 @@ export interface OfferFormData {
   prioridade: number;
   data_inicio: string;
   data_fim?: string | null;
+  mostrar_contador: boolean;
   is_parceiro: boolean;
   parceiro_nome?: string | null;
   parceiro_logo_url?: string | null;

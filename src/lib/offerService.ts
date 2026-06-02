@@ -11,6 +11,62 @@ import type {
   OfferAnalytics,
 } from '../types/offers';
 
+// --- Image Upload ---
+
+export async function uploadOfferImage(file: File, offerId?: string): Promise<string> {
+  const MAX_WIDTH = 1200;
+  const QUALITY = 0.85;
+
+  const compressed = await compressOfferImage(file, MAX_WIDTH, QUALITY);
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(2, 8);
+  const filePath = `offers/${offerId || 'new'}/${timestamp}-${random}.jpg`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('public')
+    .upload(filePath, compressed, {
+      cacheControl: '3600',
+      upsert: false,
+    });
+
+  if (uploadError) throw uploadError;
+
+  const { data: { publicUrl } } = supabase.storage
+    .from('public')
+    .getPublicUrl(filePath);
+
+  return publicUrl;
+}
+
+async function compressOfferImage(file: File, maxWidth: number, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('No 2d context')); return; }
+
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => blob ? resolve(blob) : reject(new Error('Failed to compress')),
+        'image/jpeg',
+        quality
+      );
+    };
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 // --- Admin CRUD Operations ---
 
 export async function fetchOffers(): Promise<PromotionalOffer[]> {

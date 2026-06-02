@@ -1,5 +1,6 @@
 import { X, Percent, Tag } from 'lucide-react';
 import type { PromotionalOffer } from '../../types/offers';
+import { OfferCountdown } from './OfferCountdown';
 
 interface OfferBannerTopProps {
   offer: PromotionalOffer;
@@ -41,6 +42,9 @@ export function OfferBannerTop({ offer, onDismiss, onAccept }: OfferBannerTopPro
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {offer.mostrar_contador && offer.data_fim && (
+            <OfferCountdown dataFim={offer.data_fim} corDestaque={offer.cor_destaque} compact />
+          )}
           <button
             onClick={handleCTAClick}
             className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white transition-all hover:scale-105 active:scale-95"
