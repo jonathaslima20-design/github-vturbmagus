@@ -25,7 +25,7 @@ export function CustomDomainSettings() {
   const [countdown, setCountdown] = useState('');
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isEligible = user?.plan_status === 'active' && user?.billing_cycle === 'annually';
+  const isEligible = user?.plan_status === 'active';
 
   const startCountdown = useCallback((until: Date) => {
     if (countdownRef.current) clearInterval(countdownRef.current);
@@ -292,7 +292,7 @@ export function CustomDomainSettings() {
             </div>
             <h3 className="text-lg font-semibold mb-2">Funcionalidade Premium</h3>
             <p className="text-muted-foreground max-w-md mb-4">
-              O domínio personalizado está disponível apenas para assinantes do plano anual. Faça upgrade para usar seu próprio domínio na sua vitrine.
+              O domínio personalizado está disponível em todos os planos pagos. Faça upgrade para usar seu próprio domínio na sua vitrine.
             </p>
             <Button
               onClick={() => {

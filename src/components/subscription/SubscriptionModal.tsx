@@ -89,9 +89,11 @@ export default function SubscriptionModal({ open, onOpenChange, isForced = false
     'Catálogo Digital via Link',
     'Painel Administrativo',
     'Carrinho de compras',
-    'Configuração de links externos',
     'Controle de Estoque e Inventário',
     'Gestão de Pedidos e Vendas',
+    'Cupons de desconto',
+    'Preços por quantidade (atacado)',
+    'Configuração de domínio próprio com SSL',
     'Personalização de cores e fontes',
     'Integração com Meta Pixel e Google Tag',
     'Programa de Indicação ("Indique e Ganhe")',
@@ -100,7 +102,6 @@ export default function SubscriptionModal({ open, onOpenChange, isForced = false
   // Features exclusive to the Annual plan
   const annualExclusiveFeatures = [
     'API REST para integrações externas (Bling, Tiny, ERPs)',
-    'Configuração de domínio próprio com SSL',
     'Remoção da logomarca VitrineTurbo',
   ];
 

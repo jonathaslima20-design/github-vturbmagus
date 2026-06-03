@@ -196,9 +196,9 @@ Deno.serve(async (req: Request) => {
       return await handleTestConnection(req, supabase);
     }
 
-    if (userData.plan_status !== "active" || userData.billing_cycle !== "annually") {
+    if (userData.plan_status !== "active") {
       return new Response(
-        JSON.stringify({ error: "Este recurso esta disponivel apenas para assinantes do plano anual." }),
+        JSON.stringify({ error: "Este recurso esta disponivel apenas para assinantes de um plano pago." }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
