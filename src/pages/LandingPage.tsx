@@ -582,7 +582,7 @@ function ProFeaturesSection({ refCode }: { refCode: string | null }) {
               <div className="w-9 h-9 rounded-lg border hairline bg-surface flex items-center justify-center">
                 <Globe size={18} className="text-ink-900" strokeWidth={2} />
               </div>
-              <span className="font-mono-label text-[9px] uppercase px-2 py-0.5 rounded-full bg-ink-900 text-white">Plano Anual</span>
+              <span className="font-mono-label text-[9px] uppercase px-2 py-0.5 rounded-full bg-ink-900 text-white">Planos Pagos</span>
             </div>
             <h3 className="font-display font-semibold text-[20px] lg:text-[22px] text-ink-900 tracking-[-0.02em] mt-6">
               Domínio Próprio
@@ -990,7 +990,7 @@ function FaqSection() {
     },
     {
       q: 'Posso usar meu próprio domínio?',
-      a: 'Sim. No plano Anual, você pode conectar seu domínio personalizado (ex: www.sualoja.com.br) com SSL gratuito. Basta apontar o DNS e o sistema verifica automaticamente.',
+      a: 'Sim. Em qualquer plano pago, você pode conectar seu domínio personalizado (ex: www.sualoja.com.br) com SSL gratuito. Basta apontar o DNS e o sistema verifica automaticamente.',
     },
     {
       q: 'A API funciona com Bling, Tiny e outros ERPs?',
