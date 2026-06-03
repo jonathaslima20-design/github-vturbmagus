@@ -361,6 +361,19 @@ export async function fetchOfferRecipients(offerId: string): Promise<OfferRecipi
 
   const userIds = assigned.map((a: any) => a.user_id);
 
+  // Fallback: if the FK-based join returned null user data, fetch users separately
+  const needsFallback = assigned.some((a: any) => !a.user);
+  let userMap = new Map<string, { name: string; email: string; avatar_url: string | null }>();
+  if (needsFallback) {
+    const { data: usersData } = await supabase
+      .from('users')
+      .select('id, name, email, avatar_url')
+      .in('id', userIds);
+    for (const u of usersData || []) {
+      userMap.set(u.id, { name: u.name, email: u.email, avatar_url: u.avatar_url });
+    }
+  }
+
   const { data: impressions, error: impErr } = await supabase
     .from('offer_impressions')
     .select('user_id, action, created_at')
@@ -385,12 +398,14 @@ export async function fetchOfferRecipients(offerId: string): Promise<OfferRecipi
     const timeToClick = firstView && firstClick
       ? Math.max(0, Math.round((new Date(firstClick).getTime() - new Date(firstView).getTime()) / 1000))
       : null;
+    const userFallback = userMap.get(a.user_id);
+    const userData = a.user || userFallback;
     return {
       assignment_id: a.id,
       user_id: a.user_id,
-      user_name: a.user?.name || 'Usuario',
-      user_email: a.user?.email || '',
-      user_avatar_url: a.user?.avatar_url || null,
+      user_name: userData?.name || 'Usuario',
+      user_email: userData?.email || '',
+      user_avatar_url: userData?.avatar_url || null,
       status: a.status,
       assigned_at: a.assigned_at,
       status_updated_at: a.status_updated_at,
