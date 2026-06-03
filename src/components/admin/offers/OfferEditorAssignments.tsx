@@ -1,5 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, UserPlus, X, Trash2, Mail, Store, Send, Eye, MousePointerClick, CircleCheck as CheckCircle, Circle as XCircle, Clock, ArrowUp, ArrowDown, ArrowUpDown, Bot, User as UserIcon } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import {
+  Search, UserPlus, X, Trash2, Mail, Store, Eye,
+  MousePointerClick, CircleCheck as CheckCircle, Circle as XCircle,
+  Clock, ArrowUp, ArrowDown, ArrowUpDown, Bot, User as UserIcon,
+  Filter, ChevronDown, Radio, Zap, Activity,
+} from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -22,6 +27,12 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface Props {
   offerId: string;
@@ -33,7 +44,23 @@ interface UserSearchResult {
   name: string;
   email: string;
   avatar_url?: string | null;
+  plan_status?: string | null;
+  billing_cycle?: string | null;
+  subscription_plan_name?: string | null;
+  product_count?: number;
+  last_login_at?: string | null;
 }
+
+interface LiveFeedEvent {
+  id: string;
+  user_name: string;
+  user_email: string;
+  action: string;
+  at: string;
+}
+
+type PlanFilter = 'todos' | 'free' | 'active' | 'expired' | 'trial';
+type BillingFilter = 'todos' | 'monthly' | 'trimestral' | 'annual';
 
 const STATUS_LABELS: Record<OfferAssignmentStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   pendente: { label: 'Pendente', variant: 'secondary' },
@@ -43,9 +70,26 @@ const STATUS_LABELS: Record<OfferAssignmentStatus, { label: string; variant: 'de
   expirada: { label: 'Expirada', variant: 'destructive' },
 };
 
+const LIVE_ACTION_LABELS: Record<string, { label: string; color: string }> = {
+  exibida: { label: 'visualizou a oferta', color: '#3b82f6' },
+  clicada: { label: 'clicou em aceitar', color: '#f59e0b' },
+  fechada: { label: 'dispensou a oferta', color: '#ef4444' },
+  convertida: { label: 'converteu', color: '#10b981' },
+};
+
 function formatDateTime(value?: string | null): string {
   if (!value) return '-';
   return new Date(value).toLocaleString('pt-BR');
+}
+
+function formatRelative(value: string): string {
+  const diff = Date.now() - new Date(value).getTime();
+  const secs = Math.floor(diff / 1000);
+  if (secs < 60) return 'agora';
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m atras`;
+  const hours = Math.floor(mins / 60);
+  return `${hours}h atras`;
 }
 
 function formatDuration(seconds: number | null | undefined): string {
@@ -70,6 +114,19 @@ const STATUS_BAR_COLORS: Record<OfferAssignmentStatus, string> = {
   expirada: '#64748b',
 };
 
+function PlanBadge({ plan, billing }: { plan?: string | null; billing?: string | null }) {
+  if (!plan || plan === 'free') {
+    return <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">Gratuito</span>;
+  }
+  const billingLabel = billing === 'annual' ? 'Anual' : billing === 'trimestral' ? 'Trim.' : 'Mensal';
+  const color = plan === 'active'
+    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+    : plan === 'expired'
+      ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400';
+  return <span className={`text-[11px] px-1.5 py-0.5 rounded ${color}`}>{billingLabel}</span>;
+}
+
 export function OfferEditorAssignments({ offerId, adminUserId }: Props) {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
@@ -88,6 +145,20 @@ export function OfferEditorAssignments({ offerId, adminUserId }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('assigned_at');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
+  // Search filters
+  const [planFilter, setPlanFilter] = useState<PlanFilter>('todos');
+  const [billingFilter, setBillingFilter] = useState<BillingFilter>('todos');
+  const [filterOpen, setFilterOpen] = useState(false);
+
+  // Confirmation modal
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'assign' | 'send' | null>(null);
+  const [sendProgress, setSendProgress] = useState<number | null>(null);
+
+  // Live feed
+  const [liveFeed, setLiveFeed] = useState<LiveFeedEvent[]>([]);
+  const liveFeedRef = useRef<LiveFeedEvent[]>([]);
+
   const loadRecipients = useCallback(async () => {
     try {
       setLoadingRecipients(true);
@@ -104,7 +175,7 @@ export function OfferEditorAssignments({ offerId, adminUserId }: Props) {
     loadRecipients();
   }, [loadRecipients]);
 
-  // Realtime subscription so the recipients view updates as users interact
+  // Realtime: recipient status updates + live feed events
   useEffect(() => {
     const channel = supabase
       .channel(`offer_recipients_${offerId}`)
@@ -121,8 +192,27 @@ export function OfferEditorAssignments({ offerId, adminUserId }: Props) {
         schema: 'public',
         table: 'offer_impressions',
         filter: `offer_id=eq.${offerId}`,
-      }, () => {
+      }, async (payload) => {
         loadRecipients();
+
+        const row = payload.new as { user_id?: string; action?: string; created_at?: string };
+        if (!row.user_id || !row.action) return;
+
+        const { data: usr } = await supabase
+          .from('users')
+          .select('name, email')
+          .eq('id', row.user_id)
+          .maybeSingle();
+
+        const event: LiveFeedEvent = {
+          id: `${row.user_id}-${row.created_at}-${Math.random()}`,
+          user_name: usr?.name || usr?.email || 'Usuario',
+          user_email: usr?.email || '',
+          action: row.action,
+          at: row.created_at || new Date().toISOString(),
+        };
+        liveFeedRef.current = [event, ...liveFeedRef.current].slice(0, 20);
+        setLiveFeed([...liveFeedRef.current]);
       })
       .subscribe();
 
@@ -139,26 +229,47 @@ export function OfferEditorAssignments({ offerId, adminUserId }: Props) {
 
     setSearching(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('users')
-        .select('id, name, email, avatar_url')
+        .select('id, name, email, avatar_url, plan_status, billing_cycle, subscription_plan_name, last_login_at')
         .or(`email.ilike.%${term}%,name.ilike.%${term}%`)
-        .neq('role', 'admin')
-        .limit(10);
+        .neq('role', 'admin');
 
+      if (planFilter !== 'todos') {
+        query = query.eq('plan_status', planFilter);
+      }
+      if (billingFilter !== 'todos') {
+        query = query.eq('billing_cycle', billingFilter);
+      }
+
+      query = query.limit(20);
+
+      const { data, error } = await query;
       if (error) throw error;
+
       const alreadyAssignedIds = recipients.map(r => r.user_id);
       const alreadySelectedIds = selectedUsers.map(u => u.id);
       const filtered = (data || []).filter(
         u => !alreadyAssignedIds.includes(u.id) && !alreadySelectedIds.includes(u.id)
       );
-      setSearchResults(filtered);
+
+      const withCounts = await Promise.all(
+        filtered.map(async (u) => {
+          const { count } = await supabase
+            .from('products')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', u.id);
+          return { ...u, product_count: count || 0 };
+        })
+      );
+
+      setSearchResults(withCounts);
     } catch (err) {
       console.error('Search error:', err);
     } finally {
       setSearching(false);
     }
-  }, [recipients, selectedUsers]);
+  }, [recipients, selectedUsers, planFilter, billingFilter]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -173,47 +284,66 @@ export function OfferEditorAssignments({ offerId, adminUserId }: Props) {
     setSearchTerm('');
   };
 
+  const handleSelectAll = () => {
+    setSelectedUsers(prev => {
+      const newOnes = searchResults.filter(u => !prev.some(p => p.id === u.id));
+      return [...prev, ...newOnes];
+    });
+    setSearchResults([]);
+    setSearchTerm('');
+  };
+
   const handleRemoveSelected = (userId: string) => {
     setSelectedUsers(prev => prev.filter(u => u.id !== userId));
   };
 
-  const handleAssign = async () => {
+  const executeAction = async (action: 'assign' | 'send') => {
     if (selectedUsers.length === 0) return;
-
     try {
       setAssigning(true);
+      setSendProgress(0);
       const userIds = selectedUsers.map(u => u.id);
+
+      const progressInterval = setInterval(() => {
+        setSendProgress(prev => prev !== null && prev < 80 ? prev + 15 : prev);
+      }, 120);
+
       await assignOfferToUsers(offerId, userIds, adminUserId, notes);
-      toast.success(`Oferta atribuida a ${selectedUsers.length} usuario${selectedUsers.length > 1 ? 's' : ''}`);
+
+      if (action === 'send') {
+        setSendProgress(85);
+        await broadcastOfferPush(offerId, userIds);
+        setSendProgress(100);
+        toast.success(`Oferta enviada em tempo real para ${selectedUsers.length} usuario${selectedUsers.length > 1 ? 's' : ''}`);
+      } else {
+        setSendProgress(100);
+        toast.success(`Oferta atribuida a ${selectedUsers.length} usuario${selectedUsers.length > 1 ? 's' : ''}`);
+      }
+
+      clearInterval(progressInterval);
+      setTimeout(() => setSendProgress(null), 600);
       setSelectedUsers([]);
       setNotes('');
+      setConfirmOpen(false);
+      setPendingAction(null);
       await loadRecipients();
     } catch (err) {
-      console.error('Assign error:', err);
-      toast.error('Erro ao atribuir oferta');
+      console.error('Action error:', err);
+      toast.error('Erro ao processar operacao');
+      setSendProgress(null);
     } finally {
       setAssigning(false);
     }
   };
 
-  const handleSendNow = async () => {
-    if (selectedUsers.length === 0) return;
+  const handleAssign = () => {
+    setPendingAction('assign');
+    setConfirmOpen(true);
+  };
 
-    try {
-      setAssigning(true);
-      const userIds = selectedUsers.map(u => u.id);
-      await assignOfferToUsers(offerId, userIds, adminUserId, notes);
-      await broadcastOfferPush(offerId, userIds);
-      toast.success(`Oferta enviada em tempo real para ${selectedUsers.length} usuario${selectedUsers.length > 1 ? 's' : ''}`);
-      setSelectedUsers([]);
-      setNotes('');
-      await loadRecipients();
-    } catch (err) {
-      console.error('Send now error:', err);
-      toast.error('Erro ao enviar oferta em tempo real');
-    } finally {
-      setAssigning(false);
-    }
+  const handleSendNow = () => {
+    setPendingAction('send');
+    setConfirmOpen(true);
   };
 
   const handleRemoveAssignment = async (assignmentId: string) => {
@@ -254,7 +384,7 @@ export function OfferEditorAssignments({ offerId, adminUserId }: Props) {
       return true;
     });
 
-    const sorted = [...list].sort((a, b) => {
+    return [...list].sort((a, b) => {
       const dir = sortDir === 'asc' ? 1 : -1;
       const av = a[sortKey];
       const bv = b[sortKey];
@@ -266,8 +396,6 @@ export function OfferEditorAssignments({ offerId, adminUserId }: Props) {
       }
       return String(av).localeCompare(String(bv)) * dir;
     });
-
-    return sorted;
   }, [recipients, statusFilter, recipientSearch, sortKey, sortDir]);
 
   const toggleSort = (key: SortKey) => {
@@ -329,16 +457,76 @@ export function OfferEditorAssignments({ offerId, adminUserId }: Props) {
     URL.revokeObjectURL(url);
   };
 
+  const hasActiveFilters = planFilter !== 'todos' || billingFilter !== 'todos';
+
   return (
     <div className="space-y-6">
+      {/* Search & Selection */}
       <div className="rounded-xl border bg-card p-6 space-y-4">
-        <h3 className="font-semibold text-base">Enviar Oferta para Usuarios</h3>
-        <p className="text-sm text-muted-foreground">
-          Busque por e-mail ou nome do negocio. Use "Enviar agora" para entrega instantanea sem refresh do usuario.
-        </p>
+        <div>
+          <h3 className="font-semibold text-base">Enviar Oferta para Usuarios</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Busque por e-mail ou nome. Use "Enviar agora" para entrega instantanea sem refresh do usuario.
+          </p>
+        </div>
 
         <div className="space-y-2">
-          <Label>Buscar Usuario</Label>
+          <div className="flex items-center gap-2">
+            <Label className="flex-1">Buscar Usuario</Label>
+            <Popover open={filterOpen} onOpenChange={setFilterOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs">
+                  <Filter className="h-3.5 w-3.5" />
+                  Filtros
+                  {hasActiveFilters && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  )}
+                  <ChevronDown className="h-3 w-3 opacity-60" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-4 space-y-4" align="end">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status do Plano</p>
+                  {(['todos', 'free', 'active', 'expired', 'trial'] as PlanFilter[]).map(opt => (
+                    <label key={opt} className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={planFilter === opt}
+                        onCheckedChange={() => setPlanFilter(opt)}
+                      />
+                      <span className="text-sm">
+                        {opt === 'todos' ? 'Todos' : opt === 'free' ? 'Gratuito' : opt === 'active' ? 'Ativo' : opt === 'expired' ? 'Expirado' : 'Trial'}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ciclo de Cobranca</p>
+                  {(['todos', 'monthly', 'trimestral', 'annual'] as BillingFilter[]).map(opt => (
+                    <label key={opt} className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={billingFilter === opt}
+                        onCheckedChange={() => setBillingFilter(opt)}
+                      />
+                      <span className="text-sm">
+                        {opt === 'todos' ? 'Todos' : opt === 'monthly' ? 'Mensal' : opt === 'trimestral' ? 'Trimestral' : 'Anual'}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {hasActiveFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => { setPlanFilter('todos'); setBillingFilter('todos'); }}
+                  >
+                    Limpar filtros
+                  </Button>
+                )}
+              </PopoverContent>
+            </Popover>
+          </div>
+
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -349,33 +537,54 @@ export function OfferEditorAssignments({ offerId, adminUserId }: Props) {
             />
           </div>
 
-          {searchResults.length > 0 && (
-            <div className="border rounded-lg max-h-48 overflow-y-auto divide-y">
-              {searchResults.map(user => (
-                <button
-                  key={user.id}
-                  onClick={() => handleSelectUser(user)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50 transition-colors text-left"
-                >
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    {user.avatar_url ? (
-                      <img src={user.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
-                    ) : (
-                      <Store className="h-4 w-4 text-primary" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{user.name || 'Sem nome'}</p>
-                    <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-                  </div>
-                  <UserPlus className="h-4 w-4 text-muted-foreground shrink-0" />
-                </button>
-              ))}
-            </div>
-          )}
-
           {searching && (
             <p className="text-xs text-muted-foreground">Buscando...</p>
+          )}
+
+          {searchResults.length > 0 && (
+            <div className="border rounded-lg overflow-hidden">
+              {searchResults.length > 1 && (
+                <button
+                  onClick={handleSelectAll}
+                  className="w-full px-3 py-2 text-xs font-medium text-primary bg-primary/5 hover:bg-primary/10 transition-colors text-left border-b flex items-center gap-1.5"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  Selecionar todos ({searchResults.length} usuarios)
+                </button>
+              )}
+              <div className="max-h-64 overflow-y-auto divide-y">
+                {searchResults.map(user => (
+                  <button
+                    key={user.id}
+                    onClick={() => handleSelectUser(user)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50 transition-colors text-left"
+                  >
+                    <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0 overflow-hidden">
+                      {user.avatar_url ? (
+                        <img src={user.avatar_url} alt="" className="h-9 w-9 rounded-full object-cover" />
+                      ) : (
+                        <Store className="h-4 w-4 text-primary" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium truncate">{user.name || 'Sem nome'}</p>
+                        <PlanBadge plan={user.plan_status} billing={user.billing_cycle} />
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                        {user.product_count !== undefined && (
+                          <span className="text-[11px] text-muted-foreground shrink-0">
+                            {user.product_count} produto{user.product_count !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <UserPlus className="h-4 w-4 text-muted-foreground shrink-0" />
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
@@ -410,17 +619,32 @@ export function OfferEditorAssignments({ offerId, adminUserId }: Props) {
             <div className="flex flex-wrap gap-2">
               <Button onClick={handleAssign} disabled={assigning} variant="outline" className="gap-1.5">
                 <UserPlus className="h-4 w-4" />
-                {assigning ? 'Atribuindo...' : `Atribuir (${selectedUsers.length})`}
+                {assigning && pendingAction === 'assign' ? 'Atribuindo...' : `Atribuir (${selectedUsers.length})`}
               </Button>
               <Button onClick={handleSendNow} disabled={assigning} className="gap-1.5">
-                <Send className="h-4 w-4" />
-                {assigning ? 'Enviando...' : `Enviar agora (${selectedUsers.length})`}
+                <Zap className="h-4 w-4" />
+                {assigning && pendingAction === 'send' ? 'Enviando...' : `Enviar agora (${selectedUsers.length})`}
               </Button>
             </div>
+
+            {sendProgress !== null && (
+              <div className="space-y-1">
+                <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-200"
+                    style={{ width: `${sendProgress}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {sendProgress < 100 ? 'Processando...' : 'Concluido!'}
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
 
+      {/* Recipients */}
       <div className="rounded-xl border bg-card p-6 space-y-4">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
@@ -457,11 +681,7 @@ export function OfferEditorAssignments({ offerId, adminUserId }: Props) {
             active={statusFilter === 'aceita'}
             onClick={() => setStatusFilter(statusFilter === 'aceita' ? 'todos' : 'aceita')}
           />
-          <SummaryStat
-            label="Convertidas"
-            value={totals.convertidas}
-            highlight
-          />
+          <SummaryStat label="Convertidas" value={totals.convertidas} highlight />
           <SummaryStat
             label="Dispensadas"
             value={totals.dispensadas}
@@ -526,7 +746,9 @@ export function OfferEditorAssignments({ offerId, adminUserId }: Props) {
           <div className="py-8 text-center text-sm text-muted-foreground">Carregando...</div>
         ) : filtered.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">
-            {recipients.length === 0 ? 'Nenhum usuario atribuido a esta oferta.' : 'Nenhum destinatario corresponde aos filtros atuais.'}
+            {recipients.length === 0
+              ? 'Nenhum usuario atribuido a esta oferta.'
+              : 'Nenhum destinatario corresponde aos filtros atuais.'}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -625,6 +847,125 @@ export function OfferEditorAssignments({ offerId, adminUserId }: Props) {
         )}
       </div>
 
+      {/* Live Feed */}
+      {liveFeed.length > 0 && (
+        <div className="rounded-xl border bg-card p-6 space-y-3">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-emerald-500" />
+            <h3 className="font-semibold text-base">Feed em Tempo Real</h3>
+            <span className="flex h-2 w-2 relative ml-1">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+          </div>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {liveFeed.map(event => {
+              const info = LIVE_ACTION_LABELS[event.action] || { label: event.action, color: '#94a3b8' };
+              return (
+                <div
+                  key={event.id}
+                  className="flex items-center gap-2.5 py-1.5 px-3 rounded-lg bg-muted/40"
+                >
+                  <Radio className="h-3.5 w-3.5 shrink-0" style={{ color: info.color }} />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium">{event.user_name}</span>
+                    <span className="text-sm text-muted-foreground"> {info.label}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0">{formatRelative(event.at)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      <Dialog
+        open={confirmOpen}
+        onOpenChange={(v) => {
+          if (!v && !assigning) {
+            setConfirmOpen(false);
+            setPendingAction(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {pendingAction === 'send' ? (
+                <><Zap className="h-5 w-5 text-primary" /> Enviar em Tempo Real</>
+              ) : (
+                <><UserPlus className="h-5 w-5 text-primary" /> Confirmar Atribuicao</>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {pendingAction === 'send'
+                ? 'A oferta sera exibida imediatamente para os usuarios selecionados, sem necessidade de refresh da pagina.'
+                : 'A oferta sera adicionada a fila do usuario e exibida de acordo com as regras de exibicao configuradas.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="rounded-lg border p-3 space-y-2">
+              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+                Usuarios selecionados ({selectedUsers.length})
+              </p>
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                {selectedUsers.map(u => (
+                  <div key={u.id} className="flex items-center gap-2">
+                    <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-[10px] font-semibold text-primary">
+                      {(u.name || u.email).slice(0, 1).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium truncate">{u.name || u.email}</p>
+                      {u.name && <p className="text-[11px] text-muted-foreground truncate">{u.email}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {notes && (
+              <div className="rounded-lg bg-muted/40 p-2.5 text-xs text-muted-foreground">
+                <span className="font-medium">Observacao: </span>{notes}
+              </div>
+            )}
+          </div>
+
+          {sendProgress !== null && (
+            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full bg-primary transition-all duration-200"
+                style={{ width: `${sendProgress}%` }}
+              />
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => { setConfirmOpen(false); setPendingAction(null); }}
+              disabled={assigning}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="flex-1 gap-1.5"
+              onClick={() => pendingAction && executeAction(pendingAction)}
+              disabled={assigning}
+            >
+              {assigning ? 'Processando...' : (
+                pendingAction === 'send'
+                  ? <><Zap className="h-4 w-4" /> Enviar agora</>
+                  : <><UserPlus className="h-4 w-4" /> Atribuir</>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Timeline Modal */}
       <Dialog open={timelineOpen} onOpenChange={setTimelineOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>

@@ -52,6 +52,7 @@ export function PromotionalOffersProvider({ children }: { children: React.ReactN
   const location = useLocation();
   const [offerQueue, setOfferQueue] = useState<OfferQueueItem[]>([]);
   const [currentOffer, setCurrentOffer] = useState<OfferQueueItem | null>(null);
+  const [forceShowPushed, setForceShowPushed] = useState(false);
   const [, setDisplayConfigs] = useState<OfferDisplayConfig[]>([]);
   const sessionStartRef = useRef<number>(Date.now());
   const lastDisplayTimeRef = useRef<Map<string, number>>(new Map());
@@ -212,7 +213,7 @@ export function PromotionalOffersProvider({ children }: { children: React.ReactN
     };
   }, [user, loadEligibleOffers, currentOffer]);
 
-  // Broadcast channel: admin "send now" push
+  // Broadcast channel: admin "send now" push — reload then immediately show the offer
   useEffect(() => {
     if (!user || user.role === 'admin') return;
 
@@ -221,7 +222,12 @@ export function PromotionalOffersProvider({ children }: { children: React.ReactN
       .on('broadcast', { event: 'new_offer' }, async ({ payload }) => {
         const data = payload as OfferPushPayload;
         if (!data?.user_ids?.includes(user.id)) return;
+        loadedRef.current = false;
         await loadEligibleOffers();
+        // Small delay so queue state settles, then trigger immediate display
+        setTimeout(() => {
+          setForceShowPushed(true);
+        }, 200);
       })
       .subscribe();
 
@@ -285,6 +291,14 @@ export function PromotionalOffersProvider({ children }: { children: React.ReactN
 
     return () => clearTimeout(timer);
   }, [offerQueue, currentOffer, triggerOfferCheck, location.pathname]);
+
+  // Immediately show offer when admin sends a real-time push
+  useEffect(() => {
+    if (!forceShowPushed || currentOffer || offerQueue.length === 0) return;
+    if (isPathBlocked(location.pathname)) return;
+    setForceShowPushed(false);
+    triggerOfferCheck('ao_entrar');
+  }, [forceShowPushed, currentOffer, offerQueue, triggerOfferCheck, location.pathname]);
 
   const dismissOffer = useCallback(() => {
     if (!currentOffer || !user) return;
