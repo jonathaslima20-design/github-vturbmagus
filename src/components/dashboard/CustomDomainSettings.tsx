@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Globe, CircleCheck as CheckCircle2, Clock, TriangleAlert as AlertTriangle, Copy, RefreshCw, Trash2, ExternalLink, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,8 +21,39 @@ export function CustomDomainSettings() {
     txt_host: string;
     txt_value: string;
   } | null>(null);
+  const [rateLimitedUntil, setRateLimitedUntil] = useState<Date | null>(null);
+  const [countdown, setCountdown] = useState('');
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isEligible = user?.plan_status === 'active' && user?.billing_cycle === 'annually';
+
+  const startCountdown = useCallback((until: Date) => {
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    const tick = () => {
+      const diff = until.getTime() - Date.now();
+      if (diff <= 0) {
+        setRateLimitedUntil(null);
+        setCountdown('');
+        if (countdownRef.current) clearInterval(countdownRef.current);
+        return;
+      }
+      const minutes = Math.floor(diff / 60000);
+      const seconds = Math.floor((diff % 60000) / 1000);
+      setCountdown(`${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`);
+    };
+    tick();
+    countdownRef.current = setInterval(tick, 1000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (rateLimitedUntil) startCountdown(rateLimitedUntil);
+  }, [rateLimitedUntil, startCountdown]);
 
   useEffect(() => {
     fetchDomainStatus();
@@ -48,6 +79,9 @@ export function CustomDomainSettings() {
       if (response.ok) {
         const data = await response.json();
         setDomainRecord(data.domain || null);
+        if (data.rate_limited_until) {
+          setRateLimitedUntil(new Date(data.rate_limited_until));
+        }
         if (data.domain) {
           setDomain(data.domain.domain);
           if (data.domain.status === 'pending_dns') {
@@ -162,6 +196,11 @@ export function CustomDomainSettings() {
       );
 
       const data = await response.json();
+
+      if (data.rate_limited && data.retry_after) {
+        setRateLimitedUntil(new Date(data.retry_after));
+        return;
+      }
 
       if (data.success) {
         setDomainRecord(data.domain);
@@ -461,15 +500,25 @@ export function CustomDomainSettings() {
               {getStatusBadge(domainRecord.status)}
               <span className="text-sm font-medium">DNS verificado — pronto para ativar</span>
             </div>
-            <div className="flex gap-2">
-              <Button onClick={handleActivate} disabled={actionLoading} className="flex-1">
-                {actionLoading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <Globe className="h-4 w-4 mr-2" />}
-                Ativar domínio
-              </Button>
-              <Button variant="outline" onClick={handleRemove} disabled={actionLoading}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
+            {rateLimitedUntil && countdown ? (
+              <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                <Clock className="h-4 w-4 shrink-0 text-amber-600" />
+                <div className="flex-1 text-sm text-amber-800">
+                  Aguarde para realizar uma nova alteração.
+                </div>
+                <span className="font-mono text-sm font-semibold text-amber-700">{countdown}</span>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Button onClick={handleActivate} disabled={actionLoading} className="flex-1">
+                  {actionLoading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <Globe className="h-4 w-4 mr-2" />}
+                  Ativar domínio
+                </Button>
+                <Button variant="outline" onClick={handleRemove} disabled={actionLoading}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -485,15 +534,25 @@ export function CustomDomainSettings() {
             {domainRecord.error_message && (
               <p className="text-sm text-red-600">{domainRecord.error_message}</p>
             )}
-            <div className="flex gap-2">
-              <Button onClick={handleActivate} disabled={actionLoading} className="flex-1">
-                {actionLoading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
-                Tentar novamente
-              </Button>
-              <Button variant="outline" onClick={handleRemove} disabled={actionLoading}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
+            {rateLimitedUntil && countdown ? (
+              <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                <Clock className="h-4 w-4 shrink-0 text-amber-600" />
+                <div className="flex-1 text-sm text-amber-800">
+                  Aguarde para realizar uma nova alteração.
+                </div>
+                <span className="font-mono text-sm font-semibold text-amber-700">{countdown}</span>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Button onClick={handleActivate} disabled={actionLoading} className="flex-1">
+                  {actionLoading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Tentar novamente
+                </Button>
+                <Button variant="outline" onClick={handleRemove} disabled={actionLoading}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

@@ -132,6 +132,10 @@ function friendlyNetlifyError(message: string): string {
   return `Erro ao ativar no Netlify: ${message}`;
 }
 
+function isNetlifyRateLimitError(status: number, body: string): boolean {
+  return status === 422 && body.includes("can only be changed 3 times per hour");
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -536,13 +540,34 @@ async function handleActivate(
 
     if (!updateResponse.ok) {
       const errorBody = await updateResponse.text();
+
+      if (isNetlifyRateLimitError(updateResponse.status, errorBody)) {
+        const retryAfter = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+        await supabase
+          .from("custom_domains")
+          .update({
+            netlify_rate_limited_until: retryAfter,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", domainRecord.id);
+
+        return new Response(
+          JSON.stringify({
+            error: "rate_limited",
+            rate_limited: true,
+            retry_after: retryAfter,
+          }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       throw new Error(`Failed to update site aliases: ${updateResponse.status} - ${errorBody}`);
     }
 
     const now = new Date().toISOString();
     await supabase
       .from("custom_domains")
-      .update({ status: "active", activated_at: now, updated_at: now, error_message: null })
+      .update({ status: "active", activated_at: now, updated_at: now, error_message: null, netlify_rate_limited_until: null })
       .eq("id", domainRecord.id);
 
     await supabase
@@ -669,8 +694,13 @@ async function handleStatus(
     );
   }
 
+  const rateLimitedUntil = domainRecord?.netlify_rate_limited_until ?? null;
+  const now = new Date();
+  const activeRateLimit =
+    rateLimitedUntil && new Date(rateLimitedUntil) > now ? rateLimitedUntil : null;
+
   return new Response(
-    JSON.stringify({ domain: domainRecord, instructions }),
+    JSON.stringify({ domain: domainRecord, instructions, rate_limited_until: activeRateLimit }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
 }
