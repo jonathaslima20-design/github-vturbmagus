@@ -46,7 +46,6 @@ interface UserSearchResult {
   avatar_url?: string | null;
   plan_status?: string | null;
   billing_cycle?: string | null;
-  subscription_plan_name?: string | null;
   product_count?: number;
   last_login_at?: string | null;
 }
@@ -231,7 +230,7 @@ export function OfferEditorAssignments({ offerId, adminUserId }: Props) {
     try {
       let query = supabase
         .from('users')
-        .select('id, name, email, avatar_url, plan_status, billing_cycle, subscription_plan_name, last_login_at')
+        .select('id, name, email, avatar_url, plan_status, billing_cycle, last_login_at')
         .or(`email.ilike.%${term}%,name.ilike.%${term}%`)
         .neq('role', 'admin');
 
