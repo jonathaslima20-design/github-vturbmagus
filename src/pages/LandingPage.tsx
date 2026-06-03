@@ -870,12 +870,12 @@ function PricingSection({ refCode }: { refCode: string | null }) {
     'Personalização de cores e fontes',
     'Integração com Meta Pixel e Google Tag',
     'Programa de Indicação',
+    'Domínio próprio com SSL',
   ];
 
   const anualBenefits = [
     ...allPaidBenefits,
     'API REST para integrações externas (Bling, Tiny, ERPs)',
-    'Domínio próprio com SSL',
     'Remoção da logomarca VitrineTurbo',
   ];
 
