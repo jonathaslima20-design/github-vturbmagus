@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Megaphone, Trash2, Copy, GripVertical, ChartBar as BarChart3, Eye, EyeOff, Pencil } from 'lucide-react';
+import { Plus, Megaphone, Trash2, Copy, GripVertical, ChartBar as BarChart3, Eye, EyeOff, Pencil, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -242,6 +242,15 @@ export default function OffersManagementPage() {
                     </div>
 
                     <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => navigate(`/admin/offers/${offer.id}?tab=destinatarios`)}
+                        title="Enviar para usuarios"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Save, Eye, Smartphone } from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Save, Eye, Smartphone, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -54,8 +54,11 @@ const DEFAULT_DISPLAY_CONFIG: OfferDisplayConfigFormData = {
 export default function OfferEditorPage() {
   const { offerId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const isEditing = !!offerId && offerId !== 'new';
+
+  const defaultTab = searchParams.get('tab') || 'conteudo';
 
   const [form, setForm] = useState<OfferFormData>(DEFAULT_FORM);
   const [displayConfig, setDisplayConfig] = useState<OfferDisplayConfigFormData>(DEFAULT_DISPLAY_CONFIG);
@@ -166,7 +169,11 @@ export default function OfferEditorPage() {
       }
 
       toast.success(isEditing ? 'Oferta atualizada' : 'Oferta criada com sucesso');
-      navigate('/admin/offers');
+      if (!isEditing && savedOfferId) {
+        navigate(`/admin/offers/${savedOfferId}?tab=destinatarios`);
+      } else {
+        navigate('/admin/offers');
+      }
     } catch (err) {
       toast.error('Erro ao salvar oferta');
       console.error(err);
@@ -224,14 +231,19 @@ export default function OfferEditorPage() {
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
         {/* Editor Panel */}
         <div className="xl:col-span-3">
-          <Tabs defaultValue="conteudo" className="space-y-4">
+          <Tabs defaultValue={isEditing ? defaultTab : 'conteudo'} className="space-y-4">
             <TabsList className={`grid w-full ${isEditing ? 'grid-cols-6' : 'grid-cols-5'}`}>
               <TabsTrigger value="conteudo">Conteudo</TabsTrigger>
               <TabsTrigger value="design">Design</TabsTrigger>
               <TabsTrigger value="desconto">Desconto</TabsTrigger>
               <TabsTrigger value="segmentacao">Segmentacao</TabsTrigger>
               <TabsTrigger value="exibicao">Exibicao</TabsTrigger>
-              {isEditing && <TabsTrigger value="destinatarios">Destinatarios</TabsTrigger>}
+              {isEditing && (
+                <TabsTrigger value="destinatarios" className="gap-1.5">
+                  <Users className="h-3.5 w-3.5" />
+                  Destinatarios
+                </TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="conteudo">
