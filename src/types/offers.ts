@@ -66,6 +66,7 @@ export interface OfferRecipientSummary {
   user_id: string;
   user_name: string;
   user_email: string;
+  user_avatar_url?: string | null;
   status: OfferAssignmentStatus;
   assigned_at: string;
   status_updated_at: string;
@@ -75,6 +76,9 @@ export interface OfferRecipientSummary {
   conversions_count: number;
   dismissals_count: number;
   last_action_at?: string | null;
+  first_view_at?: string | null;
+  first_click_at?: string | null;
+  time_to_click_seconds?: number | null;
 }
 
 export interface OfferTimelineEvent {

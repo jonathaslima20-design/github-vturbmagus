@@ -351,7 +351,7 @@ export async function updateAssignmentStatus(offerId: string, userId: string, st
 export async function fetchOfferRecipients(offerId: string): Promise<OfferRecipientSummary[]> {
   const { data: assignments, error: assignErr } = await supabase
     .from('offer_user_assignments')
-    .select('id, user_id, status, assigned_at, status_updated_at, converted_at, user:users(name, email)')
+    .select('id, user_id, status, assigned_at, status_updated_at, converted_at, user:users(name, email, avatar_url)')
     .eq('offer_id', offerId)
     .order('assigned_at', { ascending: false });
 
@@ -378,12 +378,19 @@ export async function fetchOfferRecipients(offerId: string): Promise<OfferRecipi
 
   return assigned.map((a: any) => {
     const imps = impByUser.get(a.user_id) || [];
-    const sorted = [...imps].sort((x, y) => y.created_at.localeCompare(x.created_at));
+    const sortedDesc = [...imps].sort((x, y) => y.created_at.localeCompare(x.created_at));
+    const sortedAsc = [...imps].sort((x, y) => x.created_at.localeCompare(y.created_at));
+    const firstView = sortedAsc.find(i => i.action === 'exibida')?.created_at || null;
+    const firstClick = sortedAsc.find(i => i.action === 'clicada')?.created_at || null;
+    const timeToClick = firstView && firstClick
+      ? Math.max(0, Math.round((new Date(firstClick).getTime() - new Date(firstView).getTime()) / 1000))
+      : null;
     return {
       assignment_id: a.id,
       user_id: a.user_id,
       user_name: a.user?.name || 'Usuario',
       user_email: a.user?.email || '',
+      user_avatar_url: a.user?.avatar_url || null,
       status: a.status,
       assigned_at: a.assigned_at,
       status_updated_at: a.status_updated_at,
@@ -392,7 +399,10 @@ export async function fetchOfferRecipients(offerId: string): Promise<OfferRecipi
       clicks_count: imps.filter(i => i.action === 'clicada').length,
       conversions_count: imps.filter(i => i.action === 'convertida').length,
       dismissals_count: imps.filter(i => i.action === 'fechada').length,
-      last_action_at: sorted[0]?.created_at || null,
+      last_action_at: sortedDesc[0]?.created_at || null,
+      first_view_at: firstView,
+      first_click_at: firstClick,
+      time_to_click_seconds: timeToClick,
     } as OfferRecipientSummary;
   });
 }
