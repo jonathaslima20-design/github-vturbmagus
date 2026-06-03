@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import type { CustomDomain } from '@/types';
 
 export function CustomDomainSettings() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [domain, setDomain] = useState('');
   const [domainRecord, setDomainRecord] = useState<CustomDomain | null>(null);
   const [loading, setLoading] = useState(true);
@@ -170,6 +170,7 @@ export function CustomDomainSettings() {
       if (data.success) {
         setDomainRecord(data.domain);
         setInstructions(null);
+        await refreshUser();
         toast.success('Domínio ativado com sucesso!');
       } else {
         toast.error(data.error || 'Erro ao ativar domínio');
@@ -206,6 +207,7 @@ export function CustomDomainSettings() {
         setDomainRecord(null);
         setDomain('');
         setInstructions(null);
+        await refreshUser();
         toast.success('Domínio removido com sucesso');
       } else {
         toast.error(data.error || 'Erro ao remover domínio');
