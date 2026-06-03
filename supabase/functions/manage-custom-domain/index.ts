@@ -95,11 +95,9 @@ function buildCnameValue(siteName: string): string {
   return normalized ? `${normalized}.netlify.app` : "vitrineturbo.netlify.app";
 }
 
-function buildInstructions(domain: string, verificationToken: string, siteName: string) {
+function buildInstructions(domain: string, verificationToken: string, _siteName: string) {
   const baseDomain = domain.replace(/^www\./, "");
   return {
-    cname_host: domain.startsWith("www.") ? "www" : domain.split(".")[0],
-    cname_value: buildCnameValue(siteName),
     txt_host: `_vitrineturbo-verify.${baseDomain}`,
     txt_value: verificationToken,
   };

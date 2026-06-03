@@ -18,8 +18,6 @@ export function CustomDomainSettings() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [instructions, setInstructions] = useState<{
-    cname_host: string;
-    cname_value: string;
     txt_host: string;
     txt_value: string;
   } | null>(null);
@@ -58,8 +56,6 @@ export function CustomDomainSettings() {
             } else {
               const baseDomain = data.domain.domain.replace(/^www\./, '');
               setInstructions({
-                cname_host: data.domain.domain.startsWith('www.') ? 'www' : data.domain.domain.split('.')[0],
-                cname_value: 'vitrineturbo.netlify.app',
                 txt_host: `_vitrineturbo-verify.${baseDomain}`,
                 txt_value: data.domain.verification_token,
               });
@@ -370,38 +366,41 @@ export function CustomDomainSettings() {
               </AlertDescription>
             </Alert>
 
-            {/* CNAME Record */}
+            {/* A Record */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">1. Registro CNAME (ou A para domínio apex)</Label>
+              <Label className="text-sm font-medium">1. Registro A</Label>
               <div className="bg-white border rounded-lg p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-xs text-muted-foreground">Tipo:</span>
-                    <span className="ml-2 text-sm font-mono">CNAME</span>
+                    <span className="ml-2 text-sm font-mono">A</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <span className="text-xs text-muted-foreground">Host:</span>
-                    <span className="ml-2 text-sm font-mono">{instructions.cname_host}</span>
+                    <span className="ml-2 text-sm font-mono">@</span>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => copyToClipboard(instructions.cname_host)}>
+                  <Button variant="ghost" size="sm" onClick={() => copyToClipboard('@')}>
                     <Copy className="h-3 w-3" />
                   </Button>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <span className="text-xs text-muted-foreground">Valor:</span>
-                    <span className="ml-2 text-sm font-mono">{instructions.cname_value}</span>
+                    <span className="ml-2 text-sm font-mono">75.2.60.5</span>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => copyToClipboard(instructions.cname_value)}>
+                  <Button variant="ghost" size="sm" onClick={() => copyToClipboard('75.2.60.5')}>
                     <Copy className="h-3 w-3" />
                   </Button>
                 </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <span className="text-xs text-muted-foreground">TTL:</span>
+                    <span className="ml-2 text-sm font-mono">3600 (padrão)</span>
+                  </div>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Para domínio sem www (apex): use registro A apontando para 75.2.60.5
-              </p>
             </div>
 
             {/* TXT Record */}
