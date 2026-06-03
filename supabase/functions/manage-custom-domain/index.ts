@@ -47,6 +47,48 @@ function generateVerificationToken(): string {
   return token;
 }
 
+interface NetlifyCredentials {
+  accessToken: string;
+  siteId: string;
+}
+
+async function getNetlifyCredentials(
+  supabase: ReturnType<typeof createClient>
+): Promise<NetlifyCredentials | null> {
+  const { data } = await supabase
+    .from("netlify_integration_config")
+    .select("access_token, site_id")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (data && data.access_token && data.site_id) {
+    return { accessToken: data.access_token, siteId: data.site_id };
+  }
+
+  const envToken = Deno.env.get("NETLIFY_ACCESS_TOKEN");
+  const envSiteId = Deno.env.get("NETLIFY_SITE_ID");
+
+  if (envToken && envSiteId) {
+    return { accessToken: envToken, siteId: envSiteId };
+  }
+
+  return null;
+}
+
+function friendlyNetlifyError(message: string): string {
+  if (message.includes("primary custom domain is not set")) {
+    return "O site no Netlify nao possui um Primary Domain configurado. Acesse o painel do Netlify > Domain management e defina o dominio principal antes de ativar dominios customizados.";
+  }
+  if (message.includes("401") || message.includes("Unauthorized")) {
+    return "Token de acesso do Netlify invalido ou expirado. Atualize as credenciais no painel admin.";
+  }
+  if (message.includes("404")) {
+    return "Site Netlify nao encontrado. Verifique se o Site ID esta correto no painel admin.";
+  }
+  return `Erro ao ativar no Netlify: ${message}`;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -55,8 +97,6 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const netlifyToken = Deno.env.get("NETLIFY_ACCESS_TOKEN");
-    const netlifySiteId = Deno.env.get("NETLIFY_SITE_ID");
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
@@ -85,7 +125,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: userData, error: userError } = await supabase
       .from("users")
-      .select("id, plan_status, billing_cycle, slug")
+      .select("id, plan_status, billing_cycle, slug, role")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -96,6 +136,19 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const url = new URL(req.url);
+    const action = url.pathname.split("/").pop();
+
+    if (action === "test-connection") {
+      if (userData.role !== "admin") {
+        return new Response(
+          JSON.stringify({ error: "Acesso restrito a administradores." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      return await handleTestConnection(req, supabase);
+    }
+
     if (userData.plan_status !== "active" || userData.billing_cycle !== "annually") {
       return new Response(
         JSON.stringify({ error: "Este recurso esta disponivel apenas para assinantes do plano anual." }),
@@ -103,8 +156,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const url = new URL(req.url);
-    const action = url.pathname.split("/").pop();
+    const credentials = await getNetlifyCredentials(supabase);
 
     switch (action) {
       case "register":
@@ -112,9 +164,9 @@ Deno.serve(async (req: Request) => {
       case "verify-dns":
         return await handleVerifyDns(supabase, user.id);
       case "activate":
-        return await handleActivate(supabase, user.id, netlifyToken, netlifySiteId);
+        return await handleActivate(supabase, user.id, credentials);
       case "remove":
-        return await handleRemove(supabase, user.id, netlifyToken, netlifySiteId);
+        return await handleRemove(supabase, user.id, credentials);
       case "status":
         return await handleStatus(supabase, user.id);
       default:
@@ -131,6 +183,88 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+
+async function handleTestConnection(
+  req: Request,
+  supabase: ReturnType<typeof createClient>
+) {
+  let bodyToken: string | undefined;
+  let bodySiteId: string | undefined;
+
+  try {
+    const body = await req.json();
+    bodyToken = body?.access_token;
+    bodySiteId = body?.site_id;
+  } catch {
+    // No body provided
+  }
+
+  let accessToken = bodyToken;
+  let siteId = bodySiteId;
+
+  if (!accessToken || !siteId) {
+    const stored = await getNetlifyCredentials(supabase);
+    if (!stored) {
+      return new Response(
+        JSON.stringify({ error: "Nenhuma credencial Netlify configurada." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    accessToken = accessToken || stored.accessToken;
+    siteId = siteId || stored.siteId;
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.netlify.com/api/v1/sites/${siteId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    if (!response.ok) {
+      const text = await response.text();
+      let errorMessage = `Falha ao conectar com Netlify (status ${response.status}).`;
+      if (response.status === 401) {
+        errorMessage = "Token de acesso do Netlify invalido ou sem permissao para este site.";
+      } else if (response.status === 404) {
+        errorMessage = "Site Netlify nao encontrado. Verifique o Site ID.";
+      }
+      return new Response(
+        JSON.stringify({ ok: false, error: errorMessage, details: text.slice(0, 500) }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const site = await response.json();
+    const primaryDomain: string | null = site.custom_domain || null;
+    const aliases: string[] = site.domain_aliases || [];
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        site_name: site.name || null,
+        site_url: site.url || null,
+        primary_domain: primaryDomain,
+        primary_domain_set: !!primaryDomain,
+        aliases_count: aliases.length,
+        aliases,
+        warning: !primaryDomain
+          ? "Este site nao tem um Primary Domain configurado. A ativacao de dominios customizados ira falhar com erro 422 ate que voce defina um dominio principal no painel do Netlify."
+          : null,
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    console.error("Test connection error:", err);
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: "Erro ao conectar com a API do Netlify.",
+        details: err instanceof Error ? err.message : "Unknown error",
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+}
 
 async function handleRegister(
   req: Request,
@@ -299,15 +433,16 @@ async function handleVerifyDns(
 async function handleActivate(
   supabase: ReturnType<typeof createClient>,
   userId: string,
-  netlifyToken: string | undefined,
-  netlifySiteId: string | undefined
+  credentials: NetlifyCredentials | null
 ) {
-  if (!netlifyToken || !netlifySiteId) {
+  if (!credentials) {
     return new Response(
-      JSON.stringify({ error: "Configuracao do Netlify nao encontrada. Contate o suporte." }),
+      JSON.stringify({ error: "Credenciais do Netlify nao configuradas. Acesse o painel admin > Integracao Netlify para configurar." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
+
+  const { accessToken, siteId } = credentials;
 
   const { data: domainRecord, error } = await supabase
     .from("custom_domains")
@@ -331,8 +466,8 @@ async function handleActivate(
 
   try {
     const getSiteResponse = await fetch(
-      `https://api.netlify.com/api/v1/sites/${netlifySiteId}`,
-      { headers: { Authorization: `Bearer ${netlifyToken}` } }
+      `https://api.netlify.com/api/v1/sites/${siteId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 
     if (!getSiteResponse.ok) {
@@ -347,11 +482,11 @@ async function handleActivate(
     }
 
     const updateResponse = await fetch(
-      `https://api.netlify.com/api/v1/sites/${netlifySiteId}`,
+      `https://api.netlify.com/api/v1/sites/${siteId}`,
       {
         method: "PUT",
         headers: {
-          Authorization: `Bearer ${netlifyToken}`,
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ domain_aliases: currentAliases }),
@@ -385,17 +520,20 @@ async function handleActivate(
   } catch (activateError) {
     console.error("Netlify activation error:", activateError);
 
+    const rawMessage = activateError instanceof Error ? activateError.message : "Unknown error";
+    const friendlyMessage = friendlyNetlifyError(rawMessage);
+
     await supabase
       .from("custom_domains")
       .update({
         status: "error",
-        error_message: `Erro ao ativar no Netlify: ${activateError instanceof Error ? activateError.message : "Unknown error"}`,
+        error_message: friendlyMessage,
         updated_at: new Date().toISOString(),
       })
       .eq("id", domainRecord.id);
 
     return new Response(
-      JSON.stringify({ error: "Erro ao ativar dominio no servidor. Tente novamente ou contate o suporte." }),
+      JSON.stringify({ error: friendlyMessage }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -404,8 +542,7 @@ async function handleActivate(
 async function handleRemove(
   supabase: ReturnType<typeof createClient>,
   userId: string,
-  netlifyToken: string | undefined,
-  netlifySiteId: string | undefined
+  credentials: NetlifyCredentials | null
 ) {
   const { data: domainRecord, error } = await supabase
     .from("custom_domains")
@@ -420,11 +557,12 @@ async function handleRemove(
     );
   }
 
-  if (domainRecord.status === "active" && netlifyToken && netlifySiteId) {
+  if (domainRecord.status === "active" && credentials) {
+    const { accessToken, siteId } = credentials;
     try {
       const getSiteResponse = await fetch(
-        `https://api.netlify.com/api/v1/sites/${netlifySiteId}`,
-        { headers: { Authorization: `Bearer ${netlifyToken}` } }
+        `https://api.netlify.com/api/v1/sites/${siteId}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
       );
 
       if (getSiteResponse.ok) {
@@ -434,11 +572,11 @@ async function handleRemove(
         );
 
         await fetch(
-          `https://api.netlify.com/api/v1/sites/${netlifySiteId}`,
+          `https://api.netlify.com/api/v1/sites/${siteId}`,
           {
             method: "PUT",
             headers: {
-              Authorization: `Bearer ${netlifyToken}`,
+              Authorization: `Bearer ${accessToken}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({ domain_aliases: currentAliases }),
