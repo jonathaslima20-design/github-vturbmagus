@@ -50,6 +50,7 @@ function generateVerificationToken(): string {
 interface NetlifyCredentials {
   accessToken: string;
   siteId: string;
+  siteName: string;
 }
 
 async function getNetlifyCredentials(
@@ -57,23 +58,67 @@ async function getNetlifyCredentials(
 ): Promise<NetlifyCredentials | null> {
   const { data } = await supabase
     .from("netlify_integration_config")
-    .select("access_token, site_id")
+    .select("access_token, site_id, site_name")
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (data && data.access_token && data.site_id) {
-    return { accessToken: data.access_token, siteId: data.site_id };
+    return {
+      accessToken: data.access_token,
+      siteId: data.site_id,
+      siteName: (data.site_name || "").trim(),
+    };
   }
 
   const envToken = Deno.env.get("NETLIFY_ACCESS_TOKEN");
   const envSiteId = Deno.env.get("NETLIFY_SITE_ID");
+  const envSiteName = Deno.env.get("NETLIFY_SITE_NAME");
 
   if (envToken && envSiteId) {
-    return { accessToken: envToken, siteId: envSiteId };
+    return {
+      accessToken: envToken,
+      siteId: envSiteId,
+      siteName: (envSiteName || "").trim(),
+    };
   }
 
   return null;
+}
+
+function normalizeSiteName(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\.netlify\.app$/i, "");
+}
+
+function buildCnameValue(siteName: string): string {
+  const normalized = normalizeSiteName(siteName);
+  return normalized ? `${normalized}.netlify.app` : "vitrineturbo.netlify.app";
+}
+
+function buildInstructions(domain: string, verificationToken: string, siteName: string) {
+  const baseDomain = domain.replace(/^www\./, "");
+  return {
+    cname_host: domain.startsWith("www.") ? "www" : domain.split(".")[0],
+    cname_value: buildCnameValue(siteName),
+    txt_host: `_vitrineturbo-verify.${baseDomain}`,
+    txt_value: verificationToken,
+  };
+}
+
+async function syncSiteNameIfChanged(
+  supabase: ReturnType<typeof createClient>,
+  storedName: string,
+  apiName: string | null | undefined
+) {
+  if (!apiName) return;
+  const normalizedApi = normalizeSiteName(apiName);
+  const normalizedStored = normalizeSiteName(storedName);
+  if (!normalizedApi || normalizedApi === normalizedStored) return;
+
+  await supabase
+    .from("netlify_integration_config")
+    .update({ site_name: normalizedApi, updated_at: new Date().toISOString() })
+    .eq("site_name", storedName);
 }
 
 function friendlyNetlifyError(message: string): string {
@@ -160,7 +205,7 @@ Deno.serve(async (req: Request) => {
 
     switch (action) {
       case "register":
-        return await handleRegister(req, supabase, user.id);
+        return await handleRegister(req, supabase, user.id, credentials);
       case "verify-dns":
         return await handleVerifyDns(supabase, user.id);
       case "activate":
@@ -168,7 +213,7 @@ Deno.serve(async (req: Request) => {
       case "remove":
         return await handleRemove(supabase, user.id, credentials);
       case "status":
-        return await handleStatus(supabase, user.id);
+        return await handleStatus(supabase, user.id, credentials);
       default:
         return new Response(
           JSON.stringify({ error: "Invalid action" }),
@@ -269,7 +314,8 @@ async function handleTestConnection(
 async function handleRegister(
   req: Request,
   supabase: ReturnType<typeof createClient>,
-  userId: string
+  userId: string,
+  credentials: NetlifyCredentials | null
 ) {
   const { domain } = await req.json();
 
@@ -336,12 +382,7 @@ async function handleRegister(
     JSON.stringify({
       success: true,
       domain: data,
-      instructions: {
-        cname_host: normalizedDomain.startsWith("www.") ? "www" : normalizedDomain.split(".")[0],
-        cname_value: "vitrineturbo.netlify.app",
-        txt_host: `_vitrineturbo-verify.${normalizedDomain.replace(/^www\./, "")}`,
-        txt_value: verificationToken,
-      },
+      instructions: buildInstructions(normalizedDomain, verificationToken, credentials?.siteName || ""),
     }),
     { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
@@ -475,6 +516,8 @@ async function handleActivate(
     }
 
     const siteData = await getSiteResponse.json();
+    await syncSiteNameIfChanged(supabase, credentials.siteName, siteData.name);
+
     const currentAliases: string[] = siteData.domain_aliases || [];
 
     if (!currentAliases.includes(domainRecord.domain)) {
@@ -603,7 +646,8 @@ async function handleRemove(
 
 async function handleStatus(
   supabase: ReturnType<typeof createClient>,
-  userId: string
+  userId: string,
+  credentials: NetlifyCredentials | null
 ) {
   const { data: domainRecord, error } = await supabase
     .from("custom_domains")
@@ -618,8 +662,17 @@ async function handleStatus(
     );
   }
 
+  let instructions = null;
+  if (domainRecord && domainRecord.status === "pending_dns" && domainRecord.verification_token) {
+    instructions = buildInstructions(
+      domainRecord.domain,
+      domainRecord.verification_token,
+      credentials?.siteName || ""
+    );
+  }
+
   return new Response(
-    JSON.stringify({ domain: domainRecord }),
+    JSON.stringify({ domain: domainRecord, instructions }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
 }

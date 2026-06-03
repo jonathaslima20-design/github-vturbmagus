@@ -53,13 +53,17 @@ export function CustomDomainSettings() {
         if (data.domain) {
           setDomain(data.domain.domain);
           if (data.domain.status === 'pending_dns') {
-            const baseDomain = data.domain.domain.replace(/^www\./, '');
-            setInstructions({
-              cname_host: data.domain.domain.startsWith('www.') ? 'www' : data.domain.domain.split('.')[0],
-              cname_value: 'vitrineturbo.netlify.app',
-              txt_host: `_vitrineturbo-verify.${baseDomain}`,
-              txt_value: data.domain.verification_token,
-            });
+            if (data.instructions) {
+              setInstructions(data.instructions);
+            } else {
+              const baseDomain = data.domain.domain.replace(/^www\./, '');
+              setInstructions({
+                cname_host: data.domain.domain.startsWith('www.') ? 'www' : data.domain.domain.split('.')[0],
+                cname_value: 'vitrineturbo.netlify.app',
+                txt_host: `_vitrineturbo-verify.${baseDomain}`,
+                txt_value: data.domain.verification_token,
+              });
+            }
           }
         }
       }

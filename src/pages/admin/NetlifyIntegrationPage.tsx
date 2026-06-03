@@ -11,6 +11,7 @@ import {
   Plug,
   Trash2,
   RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -41,6 +42,21 @@ interface TestResult {
 }
 
 type SaveState = 'idle' | 'saving' | 'success' | 'error';
+
+const SITE_NAME_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
+function normalizeSiteName(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\.netlify\.app$/i, '');
+}
+
+function validateSiteName(name: string): string | null {
+  const normalized = normalizeSiteName(name);
+  if (!normalized) return 'Nome do site e obrigatorio.';
+  if (!SITE_NAME_PATTERN.test(normalized)) {
+    return 'Use apenas letras minusculas, numeros e hifens. Sem espacos ou pontos.';
+  }
+  return null;
+}
 
 export default function NetlifyIntegrationPage() {
   const [config, setConfig] = useState<NetlifyConfig>({
@@ -98,6 +114,13 @@ export default function NetlifyIntegrationPage() {
       return;
     }
 
+    const siteNameError = validateSiteName(config.site_name);
+    if (siteNameError) {
+      setErrorMsg(siteNameError);
+      setSaveState('error');
+      return;
+    }
+
     setSaveState('saving');
     setErrorMsg('');
 
@@ -106,7 +129,7 @@ export default function NetlifyIntegrationPage() {
     const payload = {
       access_token: config.access_token.trim(),
       site_id: config.site_id.trim(),
-      site_name: config.site_name.trim(),
+      site_name: normalizeSiteName(config.site_name),
       updated_by: user?.id,
       updated_at: new Date().toISOString(),
     };
@@ -184,7 +207,12 @@ export default function NetlifyIntegrationPage() {
       setTestResult(data);
 
       if (data.ok) {
-        toast.success('Conexao com Netlify validada');
+        if (data.site_name && !config.site_name) {
+          setConfig((c) => ({ ...c, site_name: data.site_name }));
+          toast.success(`Conexao validada. Nome do site preenchido: ${data.site_name}`);
+        } else {
+          toast.success('Conexao com Netlify validada');
+        }
       } else {
         toast.error(data.error || 'Falha ao conectar com Netlify');
       }
@@ -224,7 +252,15 @@ export default function NetlifyIntegrationPage() {
   };
 
   const tokenChanged = config.access_token !== originalToken;
-  const isConfigured = !!config.id && !!originalToken;
+  const normalizedSiteName = normalizeSiteName(config.site_name);
+  const siteNameError = config.site_name ? validateSiteName(config.site_name) : null;
+  const isConfigured = !!config.id && !!originalToken && !!normalizedSiteName;
+
+  const apiSiteName = testResult?.ok ? testResult.site_name : null;
+  const apiNameMismatch =
+    !!apiSiteName && normalizeSiteName(apiSiteName) !== normalizedSiteName;
+
+  const cnamePreview = normalizedSiteName ? `${normalizedSiteName}.netlify.app` : null;
 
   if (loading) {
     return (
@@ -261,6 +297,15 @@ export default function NetlifyIntegrationPage() {
         </div>
       </div>
 
+      <Alert>
+        <AlertTriangle className="h-4 w-4" />
+        <AlertDescription className="text-xs">
+          Sempre que voce criar um novo site no Netlify (deploy de uma nova versao),
+          atualize o <strong>Site ID</strong> e o <strong>Nome do site</strong> nesta pagina.
+          Caso contrario, novos dominios cadastrados receberao instrucoes de CNAME apontando para o site antigo.
+        </AlertDescription>
+      </Alert>
+
       <Card>
         <CardHeader className="pb-4">
           <div className="flex items-center gap-3">
@@ -270,7 +315,7 @@ export default function NetlifyIntegrationPage() {
             <div>
               <CardTitle className="text-base">Credenciais do Netlify</CardTitle>
               <CardDescription className="text-sm mt-0.5">
-                Access Token e Site ID que o sistema utiliza para gerenciar dominios via API
+                Access Token, Site ID e Nome do site usados para gerenciar dominios via API
               </CardDescription>
             </div>
           </div>
@@ -328,18 +373,56 @@ export default function NetlifyIntegrationPage() {
 
           <div className="space-y-2">
             <Label htmlFor="site-name" className="text-sm font-medium">
-              Apelido do site <span className="text-muted-foreground font-normal">(opcional)</span>
+              Nome do site no Netlify <span className="text-destructive">*</span>
             </Label>
             <Input
               id="site-name"
-              placeholder="Ex: vitrineturbo-prod"
+              placeholder="vitrineturbo-prod"
               value={config.site_name}
               onChange={(e) => setConfig((c) => ({ ...c, site_name: e.target.value }))}
-              className="text-sm"
+              className="font-mono text-sm"
+              autoComplete="off"
+              aria-invalid={!!siteNameError}
             />
-            <p className="text-xs text-muted-foreground">
-              Apenas para sua referencia interna. Nao impacta na integracao.
-            </p>
+            {siteNameError ? (
+              <p className="text-xs text-destructive">{siteNameError}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Subdominio gerado pelo Netlify (parte antes de <span className="font-mono">.netlify.app</span>).
+                Sera utilizado nas instrucoes de CNAME exibidas aos usuarios.
+              </p>
+            )}
+
+            {cnamePreview && !siteNameError && (
+              <div className="mt-2 rounded-md bg-muted/40 border border-muted px-3 py-2 text-xs">
+                <span className="text-muted-foreground">Os usuarios apontarao CNAME para: </span>
+                <span className="font-mono font-medium">{cnamePreview}</span>
+              </div>
+            )}
+
+            {apiNameMismatch && (
+              <div className="mt-2 flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 px-3 py-2.5 text-xs">
+                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <p className="text-amber-800 dark:text-amber-300">
+                    O nome detectado pela API Netlify e diferente do que esta digitado.
+                    Detectado: <span className="font-mono font-medium">{apiSiteName}</span>
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1.5"
+                    onClick={() =>
+                      setConfig((c) => ({ ...c, site_name: normalizeSiteName(apiSiteName || '') }))
+                    }
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    Usar nome detectado
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {saveState === 'error' && (
@@ -382,7 +465,7 @@ export default function NetlifyIntegrationPage() {
               {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
               {testing ? 'Testando...' : 'Testar conexao'}
             </Button>
-            {isConfigured && (
+            {config.id && (
               <Button
                 variant="ghost"
                 onClick={handleRemove}
@@ -429,7 +512,7 @@ export default function NetlifyIntegrationPage() {
             {testResult.ok ? (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                  <InfoRow label="Nome do site" value={testResult.site_name || '-'} />
+                  <InfoRow label="Nome do site" value={testResult.site_name || '-'} mono />
                   <InfoRow label="URL" value={testResult.site_url || '-'} mono />
                   <InfoRow
                     label="Primary Domain"
@@ -472,9 +555,9 @@ export default function NetlifyIntegrationPage() {
           </p>
           <ol className="list-decimal pl-4 space-y-0.5">
             <li>Acesse o painel do Netlify e abra o site usado em producao</li>
-            <li>Em <em>Site settings &gt; General</em>, copie o <strong>Site ID</strong></li>
+            <li>Em <em>Site settings &gt; General</em>, copie o <strong>Site ID</strong> e anote o <strong>Site name</strong> (subdominio antes de <span className="font-mono">.netlify.app</span>)</li>
             <li>Em <em>User settings &gt; Applications</em>, gere um <strong>Personal Access Token</strong> com permissao de gerenciar sites</li>
-            <li>Cole ambos os valores acima e clique em <strong>Testar conexao</strong> para validar</li>
+            <li>Cole os valores acima e clique em <strong>Testar conexao</strong> para validar e auto-detectar o nome do site</li>
             <li>Confirme que o site possui um <strong>Primary Domain</strong> configurado, caso contrario a ativacao de dominios personalizados ira falhar</li>
           </ol>
         </AlertDescription>
