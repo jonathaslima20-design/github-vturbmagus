@@ -356,15 +356,13 @@ export async function authenticateUser(email: string, password: string): Promise
       }
     }
 
-    // Update last_login_at and login_count
+    // Update last_login_at and login_count via SECURITY DEFINER function
+    // (bypasses RLS so it works regardless of users.id / auth.uid() alignment)
     supabase
-      .from('users')
-      .update({
-        last_login_at: new Date().toISOString(),
-        login_count: (enrichedProfile.login_count || 0) + 1,
-      })
-      .eq('id', enrichedProfile.id)
-      .then(() => {});
+      .rpc('update_user_last_login', { p_email: normalizedEmail })
+      .then(({ error }) => {
+        if (error) console.warn('⚠️ last_login_at update failed:', error.message);
+      });
 
     enrichedProfile.last_login_at = new Date().toISOString();
     enrichedProfile.login_count = (enrichedProfile.login_count || 0) + 1;
@@ -487,6 +485,7 @@ export async function registerUser(
     const { data: userProfile, error: createError } = await supabase
       .from('users')
       .upsert({
+        id: authData.user.id,
         email: normalizedEmail,
         name: userData.name,
         owner_name: userData.owner_name || null,
