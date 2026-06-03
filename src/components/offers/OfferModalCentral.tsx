@@ -18,7 +18,7 @@ export function OfferModalCentral({ offer, onDismiss, onAccept, open }: OfferMod
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onDismiss(); }}>
       <DialogContent
-        className="max-w-md p-0 overflow-hidden border-0 rounded-2xl"
+        className="max-w-md p-0 overflow-hidden border-0 rounded-2xl font-sans"
         style={{ backgroundColor: offer.cor_fundo, color: offer.cor_texto }}
       >
         {offer.imagem_url && (

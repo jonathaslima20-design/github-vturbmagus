@@ -15,7 +15,7 @@ export function OfferBannerTop({ offer, onDismiss, onAccept }: OfferBannerTopPro
 
   return (
     <div
-      className="fixed top-0 left-0 right-0 z-[9998] animate-in slide-in-from-top duration-300 shadow-lg"
+      className="fixed top-0 left-0 right-0 z-[9998] animate-in slide-in-from-top duration-300 shadow-lg font-sans"
       style={{ backgroundColor: offer.cor_fundo, color: offer.cor_texto }}
     >
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">

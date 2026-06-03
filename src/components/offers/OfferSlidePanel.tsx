@@ -20,7 +20,7 @@ export function OfferSlidePanel({ offer, onDismiss, onAccept, open }: OfferSlide
     <>
       <div className="fixed inset-0 z-[9998] bg-black/30" onClick={onDismiss} />
       <div
-        className="fixed top-0 right-0 bottom-0 z-[9999] w-full max-w-sm shadow-2xl animate-in slide-in-from-right duration-300 overflow-y-auto"
+        className="fixed top-0 right-0 bottom-0 z-[9999] w-full max-w-sm shadow-2xl animate-in slide-in-from-right duration-300 overflow-y-auto font-sans"
         style={{ backgroundColor: offer.cor_fundo, color: offer.cor_texto }}
       >
         <div className="flex flex-col h-full">

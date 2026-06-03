@@ -17,7 +17,7 @@ export function OfferFullscreen({ offer, onDismiss, onAccept }: OfferFullscreenP
     <div className="fixed inset-0 z-[9999] flex items-center justify-center animate-in fade-in duration-300">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onDismiss} />
       <div
-        className="relative w-full max-w-lg mx-4 rounded-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300"
+        className="relative w-full max-w-lg mx-4 rounded-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 font-sans"
         style={{ backgroundColor: offer.cor_fundo, color: offer.cor_texto }}
       >
         {offer.imagem_url && (
