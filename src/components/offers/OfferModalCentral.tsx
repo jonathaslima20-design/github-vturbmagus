@@ -13,9 +13,6 @@ interface OfferModalCentralProps {
 export function OfferModalCentral({ offer, onDismiss, onAccept, open }: OfferModalCentralProps) {
   const handleCTAClick = () => {
     onAccept();
-    if (offer.url_destino) {
-      window.location.href = offer.url_destino;
-    }
   };
 
   return (

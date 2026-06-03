@@ -9,6 +9,9 @@ import type {
   OfferWithConfig,
   OfferImpressionAction,
   OfferAnalytics,
+  OfferRecipientSummary,
+  OfferTimelineEvent,
+  OfferAssignmentStatus,
 } from '../types/offers';
 
 // --- Image Upload ---
@@ -330,14 +333,109 @@ export async function trackImpression(offerId: string, userId: string, action: O
   if (error) console.error('Failed to track impression:', error);
 }
 
-export async function updateAssignmentStatus(offerId: string, userId: string, status: 'visualizada' | 'aceita' | 'dispensada'): Promise<void> {
+export async function updateAssignmentStatus(offerId: string, userId: string, status: OfferAssignmentStatus): Promise<void> {
+  const update: Record<string, unknown> = { status, status_updated_at: new Date().toISOString() };
+  if (status === 'aceita') update.converted_at = new Date().toISOString();
+
   const { error } = await supabase
     .from('offer_user_assignments')
-    .update({ status, status_updated_at: new Date().toISOString() })
+    .update(update)
     .eq('offer_id', offerId)
     .eq('user_id', userId);
 
   if (error) console.error('Failed to update assignment status:', error);
+}
+
+// --- Recipients & Timeline (admin) ---
+
+export async function fetchOfferRecipients(offerId: string): Promise<OfferRecipientSummary[]> {
+  const { data: assignments, error: assignErr } = await supabase
+    .from('offer_user_assignments')
+    .select('id, user_id, status, assigned_at, status_updated_at, converted_at, user:users(name, email)')
+    .eq('offer_id', offerId)
+    .order('assigned_at', { ascending: false });
+
+  if (assignErr) throw assignErr;
+  const assigned = assignments || [];
+  if (assigned.length === 0) return [];
+
+  const userIds = assigned.map((a: any) => a.user_id);
+
+  const { data: impressions, error: impErr } = await supabase
+    .from('offer_impressions')
+    .select('user_id, action, created_at')
+    .eq('offer_id', offerId)
+    .in('user_id', userIds);
+
+  if (impErr) throw impErr;
+
+  const impByUser = new Map<string, { action: string; created_at: string }[]>();
+  for (const imp of impressions || []) {
+    const arr = impByUser.get(imp.user_id) || [];
+    arr.push({ action: imp.action, created_at: imp.created_at });
+    impByUser.set(imp.user_id, arr);
+  }
+
+  return assigned.map((a: any) => {
+    const imps = impByUser.get(a.user_id) || [];
+    const sorted = [...imps].sort((x, y) => y.created_at.localeCompare(x.created_at));
+    return {
+      assignment_id: a.id,
+      user_id: a.user_id,
+      user_name: a.user?.name || 'Usuario',
+      user_email: a.user?.email || '',
+      status: a.status,
+      assigned_at: a.assigned_at,
+      status_updated_at: a.status_updated_at,
+      converted_at: a.converted_at,
+      views_count: imps.filter(i => i.action === 'exibida').length,
+      clicks_count: imps.filter(i => i.action === 'clicada').length,
+      conversions_count: imps.filter(i => i.action === 'convertida').length,
+      dismissals_count: imps.filter(i => i.action === 'fechada').length,
+      last_action_at: sorted[0]?.created_at || null,
+    } as OfferRecipientSummary;
+  });
+}
+
+export async function fetchOfferUserTimeline(offerId: string, userId: string): Promise<OfferTimelineEvent[]> {
+  const [assignmentResult, impressionsResult] = await Promise.all([
+    supabase
+      .from('offer_user_assignments')
+      .select('assigned_at, status, status_updated_at, converted_at')
+      .eq('offer_id', offerId)
+      .eq('user_id', userId)
+      .maybeSingle(),
+    supabase
+      .from('offer_impressions')
+      .select('action, created_at, session_context')
+      .eq('offer_id', offerId)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true }),
+  ]);
+
+  const events: OfferTimelineEvent[] = [];
+
+  const assignment = assignmentResult.data;
+  if (assignment) {
+    events.push({ type: 'assigned', at: assignment.assigned_at });
+  }
+
+  for (const imp of impressionsResult.data || []) {
+    events.push({
+      type: imp.action as OfferTimelineEvent['type'],
+      at: imp.created_at,
+      context: imp.session_context as Record<string, unknown> | null,
+    });
+  }
+
+  if (assignment && assignment.converted_at) {
+    if (!events.some(e => e.type === 'convertida')) {
+      events.push({ type: 'convertida', at: assignment.converted_at });
+    }
+  }
+
+  events.sort((a, b) => a.at.localeCompare(b.at));
+  return events;
 }
 
 // --- Analytics ---
@@ -537,4 +635,138 @@ export async function countEligibleUsers(rules: Omit<OfferTargetingRule, 'id' | 
   }
 
   return eligible;
+}
+
+// --- Checkout helpers ---
+
+export interface OfferCheckoutInfo {
+  offer: PromotionalOffer;
+  plan_id: string | null;
+  discount_type: 'percent' | 'fixed' | null;
+  discount_value: number;
+  coupon: {
+    id: string;
+    code: string;
+    discount_type: string;
+    discount_value: number;
+    max_discount_amount: number | null;
+  } | null;
+}
+
+export async function fetchOfferForCheckout(offerId: string, userId: string): Promise<OfferCheckoutInfo | null> {
+  const now = new Date().toISOString();
+
+  const { data: offer, error } = await supabase
+    .from('promotional_offers')
+    .select('*')
+    .eq('id', offerId)
+    .eq('is_active', true)
+    .lte('data_inicio', now)
+    .or(`data_fim.is.null,data_fim.gte.${now}`)
+    .maybeSingle();
+
+  if (error || !offer) return null;
+
+  const { data: assignment } = await supabase
+    .from('offer_user_assignments')
+    .select('id, status')
+    .eq('offer_id', offerId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  const hasManualAssignment = !!assignment && assignment.status !== 'expirada';
+
+  if (!hasManualAssignment) {
+    const { data: rules } = await supabase
+      .from('offer_targeting_rules')
+      .select('*')
+      .eq('offer_id', offerId);
+
+    if (!rules || rules.length === 0) return null;
+  }
+
+  let coupon: OfferCheckoutInfo['coupon'] = null;
+  if (offer.cupom_id) {
+    const { data: couponRow } = await supabase
+      .from('coupons')
+      .select('id, code, discount_type, discount_value, max_discount_amount, is_active')
+      .eq('id', offer.cupom_id)
+      .maybeSingle();
+    if (couponRow && couponRow.is_active) {
+      coupon = {
+        id: couponRow.id,
+        code: couponRow.code,
+        discount_type: couponRow.discount_type,
+        discount_value: Number(couponRow.discount_value) || 0,
+        max_discount_amount: couponRow.max_discount_amount ? Number(couponRow.max_discount_amount) : null,
+      };
+    }
+  }
+
+  let discount_type: 'percent' | 'fixed' | null = null;
+  let discount_value = 0;
+
+  if (coupon) {
+    discount_type = coupon.discount_type === 'percentage' || coupon.discount_type === 'percent' ? 'percent' : 'fixed';
+    discount_value = coupon.discount_value;
+  } else if (offer.desconto_percentual > 0) {
+    discount_type = 'percent';
+    discount_value = offer.desconto_percentual;
+  } else if (offer.desconto_valor_fixo > 0) {
+    discount_type = 'fixed';
+    discount_value = offer.desconto_valor_fixo;
+  }
+
+  return {
+    offer: offer as PromotionalOffer,
+    plan_id: offer.plano_alvo_id || null,
+    discount_type,
+    discount_value,
+    coupon,
+  };
+}
+
+export function calculateDiscountedPrice(
+  basePrice: number,
+  discountType: 'percent' | 'fixed' | null,
+  discountValue: number,
+  maxDiscountAmount: number | null = null
+): { discount: number; finalPrice: number } {
+  if (!discountType || discountValue <= 0) {
+    return { discount: 0, finalPrice: basePrice };
+  }
+  let discount = discountType === 'percent' ? (basePrice * discountValue) / 100 : discountValue;
+  if (maxDiscountAmount && discount > maxDiscountAmount) discount = maxDiscountAmount;
+  if (discount > basePrice) discount = basePrice;
+  const finalPrice = Math.max(0, basePrice - discount);
+  return { discount, finalPrice };
+}
+
+// --- Realtime broadcast for "send now" ---
+
+export const OFFER_PUSH_CHANNEL = 'offer_push';
+
+export interface OfferPushPayload {
+  offer_id: string;
+  user_ids: string[];
+  sent_at: string;
+}
+
+export async function broadcastOfferPush(offerId: string, userIds: string[]): Promise<void> {
+  const channel = supabase.channel(OFFER_PUSH_CHANNEL);
+  await new Promise<void>((resolve) => {
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') resolve();
+    });
+  });
+  await channel.send({
+    type: 'broadcast',
+    event: 'new_offer',
+    payload: {
+      offer_id: offerId,
+      user_ids: userIds,
+      sent_at: new Date().toISOString(),
+    } as OfferPushPayload,
+  });
+  await supabase.removeChannel(channel);
 }

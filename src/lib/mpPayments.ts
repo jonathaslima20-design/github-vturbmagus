@@ -45,6 +45,7 @@ export interface PixPaymentArgs {
     doc: string;
   };
   early_renewal?: boolean;
+  offer_id?: string;
 }
 
 export interface CardPaymentArgs {
@@ -59,6 +60,7 @@ export interface CardPaymentArgs {
     doc: string;
   };
   early_renewal?: boolean;
+  offer_id?: string;
 }
 
 export interface PixPaymentResult {

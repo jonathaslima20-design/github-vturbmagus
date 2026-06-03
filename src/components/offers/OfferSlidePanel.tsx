@@ -12,9 +12,6 @@ interface OfferSlidePanelProps {
 export function OfferSlidePanel({ offer, onDismiss, onAccept, open }: OfferSlidePanelProps) {
   const handleCTAClick = () => {
     onAccept();
-    if (offer.url_destino) {
-      window.location.href = offer.url_destino;
-    }
   };
 
   if (!open) return null;

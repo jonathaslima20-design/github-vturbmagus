@@ -169,6 +169,35 @@ async function activatePlan(
     .eq("id", userId);
 }
 
+async function recordOfferConversion(
+  admin: ReturnType<typeof createClient>,
+  offerId: string | null | undefined,
+  userId: string
+) {
+  if (!offerId) return;
+  const nowIso = new Date().toISOString();
+  try {
+    await admin
+      .from("offer_user_assignments")
+      .update({
+        status: "aceita",
+        status_updated_at: nowIso,
+        converted_at: nowIso,
+      })
+      .eq("offer_id", offerId)
+      .eq("user_id", userId);
+
+    await admin.from("offer_impressions").insert({
+      offer_id: offerId,
+      user_id: userId,
+      action: "convertida",
+      session_context: { source: "mp-webhook" },
+    });
+  } catch (err) {
+    console.error("Failed to record offer conversion", err);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -266,14 +295,14 @@ Deno.serve(async (req: Request) => {
 
     const { data: paymentRow } = await admin
       .from("mp_payments")
-      .select("id, user_id, plan_id, billing_cycle, status, early_renewal")
+      .select("id, user_id, plan_id, billing_cycle, status, early_renewal, offer_id")
       .eq("id", externalRef)
       .maybeSingle();
 
     if (!paymentRow) {
       const { data: paymentByMpId } = await admin
         .from("mp_payments")
-        .select("id, user_id, plan_id, billing_cycle, status, early_renewal")
+        .select("id, user_id, plan_id, billing_cycle, status, early_renewal, offer_id")
         .eq("mp_payment_id", dataId)
         .maybeSingle();
 
@@ -303,6 +332,7 @@ Deno.serve(async (req: Request) => {
           paymentByMpId.billing_cycle,
           paymentByMpId.early_renewal ?? false
         );
+        await recordOfferConversion(admin, paymentByMpId.offer_id, paymentByMpId.user_id);
       }
     } else {
       await admin
@@ -324,6 +354,7 @@ Deno.serve(async (req: Request) => {
           paymentRow.billing_cycle,
           paymentRow.early_renewal ?? false
         );
+        await recordOfferConversion(admin, paymentRow.offer_id, paymentRow.user_id);
       }
     }
 

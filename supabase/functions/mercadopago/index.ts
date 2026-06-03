@@ -20,6 +20,7 @@ interface PixPaymentPayload {
   billing_cycle: string;
   payer: PayerInfo;
   early_renewal?: boolean;
+  offer_id?: string;
 }
 
 interface CardPaymentPayload {
@@ -31,6 +32,96 @@ interface CardPaymentPayload {
   issuer_id: string;
   payer: { email: string; doc: string };
   early_renewal?: boolean;
+  offer_id?: string;
+}
+
+interface ResolvedDiscount {
+  offer_id: string;
+  coupon_id: string | null;
+  base_amount: number;
+  final_amount: number;
+  discount_cents: number;
+}
+
+async function resolveOfferDiscount(
+  admin: ReturnType<typeof createClient>,
+  offerId: string | undefined,
+  userId: string,
+  basePrice: number
+): Promise<ResolvedDiscount | null> {
+  if (!offerId) return null;
+  const nowIso = new Date().toISOString();
+
+  const { data: offer } = await admin
+    .from("promotional_offers")
+    .select("id, is_active, data_inicio, data_fim, desconto_percentual, desconto_valor_fixo, cupom_id")
+    .eq("id", offerId)
+    .maybeSingle();
+
+  if (!offer || !offer.is_active) return null;
+  if (offer.data_inicio && offer.data_inicio > nowIso) return null;
+  if (offer.data_fim && offer.data_fim < nowIso) return null;
+
+  const { data: assignment } = await admin
+    .from("offer_user_assignments")
+    .select("id, status")
+    .eq("offer_id", offerId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  const hasAssignment = !!assignment && assignment.status !== "expirada";
+
+  if (!hasAssignment) {
+    const { count } = await admin
+      .from("offer_targeting_rules")
+      .select("id", { count: "exact", head: true })
+      .eq("offer_id", offerId);
+    if (!count || count === 0) return null;
+  }
+
+  let discountType: "percent" | "fixed" | null = null;
+  let discountValue = 0;
+  let maxDiscount: number | null = null;
+  let couponId: string | null = null;
+
+  if (offer.cupom_id) {
+    const { data: coupon } = await admin
+      .from("coupons")
+      .select("id, discount_type, discount_value, max_discount_amount, is_active")
+      .eq("id", offer.cupom_id)
+      .maybeSingle();
+    if (coupon && coupon.is_active) {
+      couponId = coupon.id;
+      discountType = coupon.discount_type === "percentage" || coupon.discount_type === "percent" ? "percent" : "fixed";
+      discountValue = Number(coupon.discount_value) || 0;
+      maxDiscount = coupon.max_discount_amount ? Number(coupon.max_discount_amount) : null;
+    }
+  }
+
+  if (!discountType) {
+    if (Number(offer.desconto_percentual) > 0) {
+      discountType = "percent";
+      discountValue = Number(offer.desconto_percentual);
+    } else if (Number(offer.desconto_valor_fixo) > 0) {
+      discountType = "fixed";
+      discountValue = Number(offer.desconto_valor_fixo);
+    }
+  }
+
+  if (!discountType || discountValue <= 0) return null;
+
+  let discount = discountType === "percent" ? (basePrice * discountValue) / 100 : discountValue;
+  if (maxDiscount && discount > maxDiscount) discount = maxDiscount;
+  if (discount > basePrice) discount = basePrice;
+  const finalAmount = Math.max(0, Math.round((basePrice - discount) * 100) / 100);
+  const discountCents = Math.round(discount * 100);
+
+  return {
+    offer_id: offer.id,
+    coupon_id: couponId,
+    base_amount: basePrice,
+    final_amount: finalAmount,
+    discount_cents: discountCents,
+  };
 }
 
 async function getConfig(admin: ReturnType<typeof createClient>) {
@@ -215,7 +306,7 @@ Deno.serve(async (req: Request) => {
       }
 
       case "createPixPayment": {
-        const { plan_id, billing_cycle, payer, early_renewal } =
+        const { plan_id, billing_cycle, payer, early_renewal, offer_id } =
           payload as PixPaymentPayload;
 
         const { data: plan } = await admin
@@ -231,7 +322,10 @@ Deno.serve(async (req: Request) => {
           );
         }
 
-        const amountCents = Math.round(plan.price * 100);
+        const basePrice = Number(plan.price);
+        const discountInfo = await resolveOfferDiscount(admin, offer_id, user.id, basePrice);
+        const finalPrice = discountInfo ? discountInfo.final_amount : basePrice;
+        const amountCents = Math.round(finalPrice * 100);
         const config = await getConfig(admin);
         const accessToken = getAccessToken(config);
 
@@ -247,6 +341,9 @@ Deno.serve(async (req: Request) => {
             payer_doc: payer.doc,
             environment: config.environment,
             early_renewal: early_renewal ?? false,
+            offer_id: discountInfo?.offer_id ?? null,
+            coupon_id: discountInfo?.coupon_id ?? null,
+            discount_cents: discountInfo?.discount_cents ?? 0,
           })
           .select("id")
           .single();
@@ -258,7 +355,7 @@ Deno.serve(async (req: Request) => {
         const docType = payer.doc.replace(/\D/g, "").length > 11 ? "CNPJ" : "CPF";
 
         const mpBody = {
-          transaction_amount: plan.price,
+          transaction_amount: finalPrice,
           payment_method_id: "pix",
           payer: {
             email: payer.email,
@@ -347,6 +444,7 @@ Deno.serve(async (req: Request) => {
           issuer_id,
           payer: cardPayer,
           early_renewal,
+          offer_id,
         } = payload as CardPaymentPayload;
 
         const { data: plan } = await admin
@@ -362,7 +460,10 @@ Deno.serve(async (req: Request) => {
           );
         }
 
-        const amountCents = Math.round(plan.price * 100);
+        const basePrice = Number(plan.price);
+        const discountInfo = await resolveOfferDiscount(admin, offer_id, user.id, basePrice);
+        const finalPrice = discountInfo ? discountInfo.final_amount : basePrice;
+        const amountCents = Math.round(finalPrice * 100);
         const config = await getConfig(admin);
         const accessToken = getAccessToken(config);
 
@@ -379,6 +480,9 @@ Deno.serve(async (req: Request) => {
             installments,
             environment: config.environment,
             early_renewal: early_renewal ?? false,
+            offer_id: discountInfo?.offer_id ?? null,
+            coupon_id: discountInfo?.coupon_id ?? null,
+            discount_cents: discountInfo?.discount_cents ?? 0,
           })
           .select("id")
           .single();
@@ -391,7 +495,7 @@ Deno.serve(async (req: Request) => {
           cardPayer.doc.replace(/\D/g, "").length > 11 ? "CNPJ" : "CPF";
 
         const mpBody = {
-          transaction_amount: plan.price,
+          transaction_amount: finalPrice,
           token,
           installments,
           payment_method_id,
@@ -458,6 +562,25 @@ Deno.serve(async (req: Request) => {
 
         if (mpData.status === "approved") {
           await activatePlan(admin, user.id, plan.id, billing_cycle, early_renewal ?? false);
+
+          if (discountInfo) {
+            const nowIso = new Date().toISOString();
+            await admin
+              .from("offer_user_assignments")
+              .update({
+                status: "aceita",
+                status_updated_at: nowIso,
+                converted_at: nowIso,
+              })
+              .eq("offer_id", discountInfo.offer_id)
+              .eq("user_id", user.id);
+            await admin.from("offer_impressions").insert({
+              offer_id: discountInfo.offer_id,
+              user_id: user.id,
+              action: "convertida",
+              session_context: { source: "mp-card" },
+            });
+          }
         }
 
         return new Response(
@@ -477,7 +600,7 @@ Deno.serve(async (req: Request) => {
 
         const { data: payment } = await admin
           .from("mp_payments")
-          .select("id, status, status_detail, mp_payment_id, plan_id, billing_cycle, early_renewal, pix_qr_code, pix_qr_code_base64, pix_expires_at, card_last4, card_brand, payment_method, updated_at")
+          .select("id, status, status_detail, mp_payment_id, plan_id, billing_cycle, early_renewal, offer_id, pix_qr_code, pix_qr_code_base64, pix_expires_at, card_last4, card_brand, payment_method, updated_at")
           .eq("id", payment_id)
           .eq("user_id", user.id)
           .maybeSingle();
@@ -522,6 +645,25 @@ Deno.serve(async (req: Request) => {
                     payment.billing_cycle,
                     payment.early_renewal ?? false
                   );
+
+                  if (payment.offer_id) {
+                    const nowIso = new Date().toISOString();
+                    await admin
+                      .from("offer_user_assignments")
+                      .update({
+                        status: "aceita",
+                        status_updated_at: nowIso,
+                        converted_at: nowIso,
+                      })
+                      .eq("offer_id", payment.offer_id)
+                      .eq("user_id", user.id);
+                    await admin.from("offer_impressions").insert({
+                      offer_id: payment.offer_id,
+                      user_id: user.id,
+                      action: "convertida",
+                      session_context: { source: "mp-poll" },
+                    });
+                  }
                 }
 
                 return new Response(

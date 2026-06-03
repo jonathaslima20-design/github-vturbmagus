@@ -11,8 +11,13 @@ import {
   type CardPaymentResult,
 } from '@/lib/mpPayments';
 import { formatCurrencyI18n } from '@/lib/i18n';
+import {
+  fetchOfferForCheckout,
+  calculateDiscountedPrice,
+  type OfferCheckoutInfo,
+} from '@/lib/offerService';
 import { toast } from 'sonner';
-import { QrCode, CreditCard, Copy, Check, Loader as Loader2, ArrowLeft, ShieldCheck, Clock, CircleCheck as CheckCircle2, Circle as XCircle, CircleAlert as AlertCircle, CalendarClock } from 'lucide-react';
+import { QrCode, CreditCard, Copy, Check, Loader as Loader2, ArrowLeft, ShieldCheck, Clock, CircleCheck as CheckCircle2, Circle as XCircle, CircleAlert as AlertCircle, CalendarClock, Tag } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +36,15 @@ interface PlanInfo {
   duration: string;
 }
 
+interface OfferContext {
+  offer_id: string;
+  base_price: number;
+  discount: number;
+  final_price: number;
+  coupon_code: string | null;
+  description: string;
+}
+
 function formatCpf(value: string): string {
   const digits = value.replace(/\D/g, '').slice(0, 14);
   if (digits.length <= 11) {
@@ -46,7 +60,7 @@ function formatCpf(value: string): string {
     .replace(/(\d{4})(\d{1,2})$/, '$1-$2');
 }
 
-function PixSection({ plan, onSuccess, earlyRenewal }: { plan: PlanInfo; onSuccess: () => void; earlyRenewal?: boolean }) {
+function PixSection({ plan, onSuccess, earlyRenewal, offerContext }: { plan: PlanInfo; onSuccess: () => void; earlyRenewal?: boolean; offerContext?: OfferContext | null }) {
   const { user } = useAuth();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -135,6 +149,7 @@ function PixSection({ plan, onSuccess, earlyRenewal }: { plan: PlanInfo; onSucce
           doc: cleanDoc,
         },
         early_renewal: earlyRenewal,
+        offer_id: offerContext?.offer_id,
       });
       setPixResult(result);
       startPolling(result.payment_id);
@@ -291,9 +306,10 @@ interface CardSectionProps {
   plan: PlanInfo;
   onSuccess: () => void;
   earlyRenewal?: boolean;
+  offerContext?: OfferContext | null;
 }
 
-function CardSection({ plan, onSuccess, earlyRenewal }: CardSectionProps) {
+function CardSection({ plan, onSuccess, earlyRenewal, offerContext }: CardSectionProps) {
   const [result, setResult] = useState<CardPaymentResult | null>(null);
   const [brickReady, setBrickReady] = useState(false);
   const planRef = useRef(plan);
@@ -302,6 +318,8 @@ function CardSection({ plan, onSuccess, earlyRenewal }: CardSectionProps) {
   onSuccessRef.current = onSuccess;
   const earlyRenewalRef = useRef(earlyRenewal);
   earlyRenewalRef.current = earlyRenewal;
+  const offerIdRef = useRef(offerContext?.offer_id);
+  offerIdRef.current = offerContext?.offer_id;
 
   const handleSubmit = useCallback(async (formData: any) => {
     return new Promise<void>(async (resolve, reject) => {
@@ -319,6 +337,7 @@ function CardSection({ plan, onSuccess, earlyRenewal }: CardSectionProps) {
             doc: formData.payer?.identification?.number || '',
           },
           early_renewal: earlyRenewalRef.current,
+          offer_id: offerIdRef.current,
         });
         setResult(cardResult);
         if (cardResult.status === 'approved') {
@@ -340,7 +359,8 @@ function CardSection({ plan, onSuccess, earlyRenewal }: CardSectionProps) {
     console.error('CardPayment Brick error:', error);
   }, []);
 
-  const initialization = useMemo(() => ({ amount: plan.price }), [plan.price]);
+  const effectiveAmount = offerContext?.final_price ?? plan.price;
+  const initialization = useMemo(() => ({ amount: effectiveAmount }), [effectiveAmount]);
   const customization = useMemo(() => ({
     visual: { hideFormTitle: true },
     paymentMethods: { maxInstallments: 12 },
@@ -447,10 +467,13 @@ export default function CheckoutPage() {
   const [paymentComplete, setPaymentComplete] = useState(false);
   const [sdkReady, setSdkReady] = useState(false);
   const [sdkError, setSdkError] = useState(false);
+  const [offerContext, setOfferContext] = useState<OfferContext | null>(null);
+  const [offerLoading, setOfferLoading] = useState(false);
 
   const planId = searchParams.get('plan');
   const cycle = searchParams.get('cycle');
   const earlyRenewal = searchParams.get('early_renewal') === 'true';
+  const offerId = searchParams.get('offer_id');
 
   useEffect(() => {
     if (!planId) {
@@ -482,6 +505,52 @@ export default function CheckoutPage() {
 
     fetchPlan();
   }, [planId, cycle, navigate]);
+
+  useEffect(() => {
+    if (!offerId || !user?.id || !plan) {
+      setOfferContext(null);
+      return;
+    }
+    let cancelled = false;
+    const loadOffer = async () => {
+      setOfferLoading(true);
+      try {
+        const info: OfferCheckoutInfo | null = await fetchOfferForCheckout(offerId, user.id);
+        if (cancelled || !info) {
+          if (!cancelled && offerId) {
+            toast.warning('Oferta indisponivel - prosseguindo com preco normal');
+          }
+          return;
+        }
+        const { discount, finalPrice } = calculateDiscountedPrice(
+          plan.price,
+          info.discount_type,
+          info.discount_value,
+          info.coupon?.max_discount_amount ?? null
+        );
+        if (discount <= 0) return;
+        const description = info.coupon
+          ? `Cupom ${info.coupon.code} aplicado automaticamente`
+          : info.discount_type === 'percent'
+            ? `${info.discount_value}% de desconto da oferta`
+            : `${formatCurrencyI18n(info.discount_value)} de desconto da oferta`;
+        setOfferContext({
+          offer_id: info.offer.id,
+          base_price: plan.price,
+          discount,
+          final_price: finalPrice,
+          coupon_code: info.coupon?.code ?? null,
+          description,
+        });
+      } catch (err) {
+        console.error('Failed to load offer for checkout', err);
+      } finally {
+        if (!cancelled) setOfferLoading(false);
+      }
+    };
+    loadOffer();
+    return () => { cancelled = true; };
+  }, [offerId, user?.id, plan]);
 
   useEffect(() => {
     let cancelled = false;
@@ -570,6 +639,7 @@ export default function CheckoutPage() {
         plan={plan}
         onSuccess={handleSuccess}
         earlyRenewal={earlyRenewal}
+        offerContext={offerContext}
       />
     );
   };
@@ -595,13 +665,44 @@ export default function CheckoutPage() {
                 <p className="text-sm text-muted-foreground">Ciclo: {plan.duration}</p>
               </div>
               <div className="text-right">
-                <p className="text-2xl font-bold text-primary">
-                  {formatCurrencyI18n(plan.price)}
-                </p>
+                {offerContext ? (
+                  <>
+                    <p className="text-xs line-through text-muted-foreground">
+                      {formatCurrencyI18n(offerContext.base_price)}
+                    </p>
+                    <p className="text-2xl font-bold text-emerald-600">
+                      {formatCurrencyI18n(offerContext.final_price)}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-2xl font-bold text-primary">
+                    {formatCurrencyI18n(plan.price)}
+                  </p>
+                )}
               </div>
             </div>
           </CardContent>
         </Card>
+
+        {offerLoading && (
+          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <span>Aplicando oferta...</span>
+          </div>
+        )}
+
+        {offerContext && (
+          <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50/60 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
+            <Tag className="h-4 w-4 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="font-medium">{offerContext.description}</p>
+              <p className="text-xs mt-0.5 opacity-80">
+                Voce economiza {formatCurrencyI18n(offerContext.discount)}
+                {offerContext.coupon_code && ` - cupom ${offerContext.coupon_code}`}
+              </p>
+            </div>
+          </div>
+        )}
 
         {earlyRenewal && user?.subscription_end_date && (
           <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50/60 px-4 py-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-300">
@@ -657,7 +758,7 @@ export default function CheckoutPage() {
               <Separator />
 
               {activeTab === 'pix' ? (
-                <PixSection plan={plan} onSuccess={handleSuccess} earlyRenewal={earlyRenewal} />
+                <PixSection plan={plan} onSuccess={handleSuccess} earlyRenewal={earlyRenewal} offerContext={offerContext} />
               ) : (
                 renderCardContent()
               )}

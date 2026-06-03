@@ -11,9 +11,6 @@ interface OfferBannerTopProps {
 export function OfferBannerTop({ offer, onDismiss, onAccept }: OfferBannerTopProps) {
   const handleCTAClick = () => {
     onAccept();
-    if (offer.url_destino) {
-      window.location.href = offer.url_destino;
-    }
   };
 
   return (

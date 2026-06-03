@@ -11,9 +11,6 @@ interface OfferFullscreenProps {
 export function OfferFullscreen({ offer, onDismiss, onAccept }: OfferFullscreenProps) {
   const handleCTAClick = () => {
     onAccept();
-    if (offer.url_destino) {
-      window.location.href = offer.url_destino;
-    }
   };
 
   return (

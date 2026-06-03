@@ -58,6 +58,30 @@ export interface OfferUserAssignment {
   status: OfferAssignmentStatus;
   status_updated_at: string;
   notes: string;
+  converted_at?: string | null;
+}
+
+export interface OfferRecipientSummary {
+  assignment_id: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  status: OfferAssignmentStatus;
+  assigned_at: string;
+  status_updated_at: string;
+  converted_at?: string | null;
+  views_count: number;
+  clicks_count: number;
+  conversions_count: number;
+  dismissals_count: number;
+  last_action_at?: string | null;
+}
+
+export interface OfferTimelineEvent {
+  type: 'assigned' | 'exibida' | 'clicada' | 'fechada' | 'convertida' | 'status';
+  at: string;
+  context?: Record<string, unknown> | null;
+  status?: OfferAssignmentStatus;
 }
 
 export interface OfferImpression {

@@ -1,29 +1,81 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Eye, MousePointerClick, CircleCheck as CheckCircle, Circle as XCircle, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Eye, MousePointerClick, CircleCheck as CheckCircle, Circle as XCircle, TrendingUp, Users, Activity } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { fetchOfferById, fetchOfferAnalytics } from '@/lib/offerService';
-import type { OfferWithConfig, OfferAnalytics } from '@/types/offers';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  fetchOfferById,
+  fetchOfferAnalytics,
+  fetchOfferRecipients,
+  fetchOfferUserTimeline,
+} from '@/lib/offerService';
+import type {
+  OfferWithConfig,
+  OfferAnalytics,
+  OfferRecipientSummary,
+  OfferTimelineEvent,
+  OfferAssignmentStatus,
+} from '@/types/offers';
+
+const STATUS_LABELS: Record<OfferAssignmentStatus, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
+  pendente: { label: 'Pendente', variant: 'outline' },
+  visualizada: { label: 'Visualizada', variant: 'secondary' },
+  aceita: { label: 'Aceita', variant: 'default' },
+  dispensada: { label: 'Dispensada', variant: 'destructive' },
+  expirada: { label: 'Expirada', variant: 'outline' },
+};
+
+function timelineLabel(event: OfferTimelineEvent): string {
+  switch (event.type) {
+    case 'assigned': return 'Atribuida ao usuario';
+    case 'exibida': return 'Oferta exibida';
+    case 'clicada': return 'Clicou em aproveitar';
+    case 'fechada': return 'Fechou a oferta';
+    case 'convertida': return 'Conversao registrada';
+    case 'status': return `Status: ${event.status ?? ''}`;
+    default: return event.type;
+  }
+}
+
+function timelineColor(event: OfferTimelineEvent): string {
+  switch (event.type) {
+    case 'assigned': return 'bg-blue-500';
+    case 'exibida': return 'bg-amber-500';
+    case 'clicada': return 'bg-orange-500';
+    case 'fechada': return 'bg-rose-500';
+    case 'convertida': return 'bg-emerald-500';
+    case 'status': return 'bg-slate-400';
+    default: return 'bg-muted-foreground';
+  }
+}
 
 export default function OfferAnalyticsPage() {
   const { offerId } = useParams();
   const navigate = useNavigate();
   const [offer, setOffer] = useState<OfferWithConfig | null>(null);
   const [analytics, setAnalytics] = useState<OfferAnalytics | null>(null);
+  const [recipients, setRecipients] = useState<OfferRecipientSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [timelineUser, setTimelineUser] = useState<OfferRecipientSummary | null>(null);
+  const [timelineEvents, setTimelineEvents] = useState<OfferTimelineEvent[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
 
   useEffect(() => {
     if (!offerId) return;
     const load = async () => {
       try {
-        const [offerData, analyticsData] = await Promise.all([
+        const [offerData, analyticsData, recipientData] = await Promise.all([
           fetchOfferById(offerId),
           fetchOfferAnalytics(offerId, 30),
+          fetchOfferRecipients(offerId),
         ]);
         setOffer(offerData);
         setAnalytics(analyticsData);
+        setRecipients(recipientData);
       } catch (err) {
         toast.error('Erro ao carregar analytics');
         console.error(err);
@@ -33,6 +85,22 @@ export default function OfferAnalyticsPage() {
     };
     load();
   }, [offerId]);
+
+  const openTimeline = async (recipient: OfferRecipientSummary) => {
+    if (!offerId) return;
+    setTimelineUser(recipient);
+    setTimelineOpen(true);
+    setTimelineLoading(true);
+    try {
+      const events = await fetchOfferUserTimeline(offerId, recipient.user_id);
+      setTimelineEvents(events);
+    } catch (err) {
+      toast.error('Erro ao carregar historico do usuario');
+      console.error(err);
+    } finally {
+      setTimelineLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -183,6 +251,112 @@ export default function OfferAnalyticsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Recipients */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Users className="w-5 h-5" />
+            Destinatarios ({recipients.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {recipients.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">
+              Nenhum usuario recebeu esta oferta ainda.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 font-medium">Usuario</th>
+                    <th className="text-left py-2 font-medium">Status</th>
+                    <th className="text-right py-2 font-medium">Vis.</th>
+                    <th className="text-right py-2 font-medium">Cliques</th>
+                    <th className="text-right py-2 font-medium">Conv.</th>
+                    <th className="text-right py-2 font-medium">Disp.</th>
+                    <th className="text-left py-2 font-medium">Atribuida em</th>
+                    <th className="text-right py-2 font-medium">Acao</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recipients.map((r) => {
+                    const status = STATUS_LABELS[r.status];
+                    return (
+                      <tr key={r.assignment_id} className="border-b last:border-0">
+                        <td className="py-2">
+                          <div className="font-medium">{r.user_name || r.user_email}</div>
+                          {r.user_name && (
+                            <div className="text-xs text-muted-foreground">{r.user_email}</div>
+                          )}
+                        </td>
+                        <td className="py-2">
+                          <Badge variant={status.variant}>{status.label}</Badge>
+                        </td>
+                        <td className="text-right py-2">{r.views_count}</td>
+                        <td className="text-right py-2">{r.clicks_count}</td>
+                        <td className="text-right py-2">{r.conversions_count}</td>
+                        <td className="text-right py-2">{r.dismissals_count}</td>
+                        <td className="py-2 text-xs text-muted-foreground">
+                          {new Date(r.assigned_at).toLocaleString('pt-BR')}
+                        </td>
+                        <td className="text-right py-2">
+                          <Button variant="ghost" size="sm" onClick={() => openTimeline(r)}>
+                            <Activity className="w-4 h-4 mr-1" />
+                            Historico
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Timeline Dialog */}
+      <Dialog open={timelineOpen} onOpenChange={setTimelineOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              Historico - {timelineUser?.user_name || timelineUser?.user_email}
+            </DialogTitle>
+          </DialogHeader>
+          {timelineLoading ? (
+            <p className="py-6 text-sm text-muted-foreground text-center">Carregando...</p>
+          ) : timelineEvents.length === 0 ? (
+            <p className="py-6 text-sm text-muted-foreground text-center">
+              Nenhuma atividade registrada.
+            </p>
+          ) : (
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+              {timelineEvents.map((event, idx) => (
+                <div key={`${event.type}-${event.at}-${idx}`} className="flex gap-3">
+                  <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${timelineColor(event)}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium">{timelineLabel(event)}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(event.at).toLocaleString('pt-BR')}
+                    </div>
+                    {event.context && (
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {Object.entries(event.context).map(([k, v]) => (
+                          <span key={k} className="mr-2">
+                            {k}: {String(v)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
